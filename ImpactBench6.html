@@ -1,0 +1,1660 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Impact Bench</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout concept: a test-range bench. Big live stage on the left, control column on the right,
+   gauges, experiments and transport underneath the stage. Heat is the only warm colour on the page;
+   pressure uses a cool ramp (compression) and a violet ramp (tension). */
+:root {
+  --bg: #0a0e13;
+  --panel: #101821;
+  --panel2: #17222f;
+  --line: #243242;
+  --fg: #dbe3ec;
+  --mute: #8196ab;
+  --cool: #6fb3e0;
+  --violet: #c08ae6;
+  --heat: #ff7a2f;
+  --heat-ink: #1a0b02;
+  --stage: #0d141c;
+  --display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --body: "Barlow", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { background: var(--bg); }
+body {
+  margin: 0;
+  color: var(--fg);
+  font: 15px/1.45 var(--body);
+  padding-block: 18px 32px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.top { max-width: 1240px; margin: 0 auto 16px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 20px; }
+.top h1 { margin: 0; font: 700 30px/1 var(--display); letter-spacing: .06em; text-transform: uppercase; }
+.top h1 span { color: var(--heat); }
+.top p { margin: 0; color: var(--mute); max-width: 72ch; min-width: 0; }
+.shell { max-width: 1240px; margin: 0 auto; display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 960px) { .shell { grid-template-columns: minmax(0, 1fr) 340px; align-items: start; } }
+.main { display: grid; gap: 12px; min-width: 0; }
+
+.stage { position: relative; aspect-ratio: 900 / 560; background: var(--stage); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; max-width: 100%; }
+.stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; touch-action: manipulation; }
+.hud { position: absolute; left: 10px; top: 8px; right: 10px; display: flex; flex-wrap: wrap; gap: 4px 18px; font: 500 11px/1.2 var(--mono); color: var(--mute); pointer-events: none; text-transform: uppercase; letter-spacing: .06em; }
+.hud b { color: var(--fg); font-weight: 500; margin-left: 4px; letter-spacing: 0; text-transform: none; }
+.nocase { text-transform: none; }
+.hint { position: absolute; left: 10px; bottom: 8px; right: 40%; font: 400 11px/1.3 var(--mono); color: var(--mute); pointer-events: none; }
+.toast { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); background: var(--panel2); border: 1px solid var(--line); padding: 6px 12px; border-radius: 4px; font: 500 12px/1.3 var(--mono); max-width: 90%; text-align: center; }
+
+.bar { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; }
+.bar .grow { flex: 1 1 0; }
+button { font: inherit; color: inherit; }
+.btn { background: var(--panel2); border: 1px solid var(--line); color: var(--fg); padding: 9px 16px; border-radius: 5px; font: 600 14px/1 var(--display); letter-spacing: .1em; text-transform: uppercase; cursor: pointer; min-height: 40px; }
+.btn:hover { border-color: var(--mute); }
+.btn.fire { background: var(--heat); border-color: var(--heat); color: var(--heat-ink); font-weight: 700; padding-inline: 26px; }
+.btn.fire:hover { filter: brightness(1.08); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--cool); outline-offset: 2px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 5px; overflow: hidden; max-width: 100%; }
+.seg button { background: transparent; border: 0; border-right: 1px solid var(--line); padding: 8px 11px; font: 600 13px/1 var(--display); letter-spacing: .08em; text-transform: uppercase; color: var(--mute); cursor: pointer; min-height: 38px; }
+.seg button:last-child { border-right: 0; }
+.seg button[aria-pressed="true"] { background: var(--panel2); color: var(--fg); box-shadow: inset 0 -2px 0 var(--cool); }
+.seg.wide { display: grid; grid-template-columns: repeat(auto-fit, minmax(58px, 1fr)); width: 100%; }
+.lbl { font: 500 11px/1 var(--mono); color: var(--mute); text-transform: uppercase; letter-spacing: .08em; margin-right: 6px; }
+
+.exps h2, .panel h2, .scope h2 { margin: 0 0 8px; font: 600 14px/1 var(--display); letter-spacing: .16em; text-transform: uppercase; color: var(--mute); }
+.exps .list { display: flex; flex-wrap: wrap; gap: 8px; }
+.exp { background: var(--panel); border: 1px solid var(--line); border-radius: 5px; padding: 8px 12px; text-align: left; cursor: pointer; min-width: 0; }
+.exp:hover { border-color: var(--cool); }
+.exp b { display: block; font: 600 14px/1.1 var(--display); letter-spacing: .06em; text-transform: uppercase; }
+.exp span { font-size: 12px; color: var(--mute); }
+
+.scope { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px 8px; min-width: 0; }
+.scope-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; margin-bottom: 6px; }
+.scope-head h2 { margin: 0; }
+.key { display: flex; flex-wrap: wrap; gap: 4px 12px; font: 500 11px/1 var(--mono); color: var(--mute); text-transform: uppercase; letter-spacing: .06em; }
+.key span { display: inline-flex; align-items: center; gap: 5px; }
+.key i { width: 14px; height: 2px; display: inline-block; }
+.key i.dash { background: repeating-linear-gradient(90deg, var(--mute) 0 4px, transparent 4px 7px); }
+.im { font: 500 11px/1.3 var(--mono); color: var(--fg); margin-left: auto; }
+.scope canvas { display: block; width: 100%; height: 150px; }
+
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 16px; display: grid; gap: 22px; min-width: 0; }
+.group { display: grid; gap: 10px; min-width: 0; }
+.sub { font: 500 11px/1 var(--mono); color: var(--mute); text-transform: uppercase; letter-spacing: .08em; margin-top: 2px; }
+.chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; }
+.chip { display: flex; align-items: center; gap: 7px; background: transparent; border: 1px solid var(--line); border-radius: 4px; padding: 7px 8px; font: 500 13px/1 var(--body); color: var(--mute); cursor: pointer; min-width: 0; min-height: 34px; text-align: left; }
+.chip i { width: 12px; height: 12px; border-radius: 2px; flex: none; }
+.chip[aria-pressed="true"] { color: var(--fg); border-color: var(--cool); background: var(--panel2); }
+.row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.row label { font: 600 13px/1 var(--display); letter-spacing: .1em; text-transform: uppercase; }
+.row output { font: 500 12px/1 var(--mono); color: var(--cool); }
+input[type=range] { width: 100%; accent-color: var(--cool); margin: 4px 0 0; }
+.note { font-size: 12px; color: var(--mute); margin: 0; }
+.matinfo { font: 400 11px/1.5 var(--mono); color: var(--mute); margin: 0; }
+details.model { font-size: 12px; color: var(--mute); }
+details.model summary { cursor: pointer; font: 600 13px/1.2 var(--display); letter-spacing: .1em; text-transform: uppercase; color: var(--fg); }
+details.model ul { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 4px; }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>Impact <span>Bench</span></h1>
+  <p>A plane-strain impact hydrocode on a 1.2 metre stage: Mie–Grüneisen shock equation of state, artificial viscosity, Johnson–Cook strength, ductile damage, spall and brittle cracking. Millimetres, microseconds, gigapascals.</p>
+</header>
+
+<div class="shell">
+  <div class="main">
+    <div class="stage" id="stage">
+      <canvas id="cv" aria-label="Impact simulation. Tap to fire at that height."></canvas>
+      <div class="hud">
+        <span>Time<b id="hS">0.0 µs</b></span>
+        <span>Particles<b id="hP">0</b></span>
+        <span>Target intact<b id="hI">100%</b></span>
+        <span>Projectile<b id="hV">none</b></span>
+        <span>Peak pressure<b id="hPr">0 GPa</b></span>
+        <span>Peak temp<b id="hT">27 °C</b></span>
+        <span>Clamp<b id="hC">–</b></span>
+      </div>
+      <div class="hint" id="hint">Tap the stage to fire at that height</div>
+      <div class="toast" id="toast" hidden></div>
+    </div>
+
+    <div class="bar">
+      <button class="btn fire" id="fire" type="button">Fire</button>
+      <button class="btn" id="pause" type="button">Pause</button>
+      <button class="btn" id="reset" type="button">Reset</button>
+      <span class="grow"></span>
+      <span><span class="lbl">View</span><span class="seg" id="viewSeg"></span></span>
+      <span><span class="lbl"><span class="nocase">µs</span> per second</span><span class="seg" id="timeSeg"></span></span>
+    </div>
+
+    <div class="scope">
+      <div class="scope-head">
+        <h2>Stress gauges</h2>
+        <span class="key">
+          <span><i style="background:#dbe3ec"></i>Near face</span>
+          <span><i style="background:#6fb3e0"></i>Middle</span>
+          <span><i style="background:#c08ae6"></i>Near back</span>
+          <span><i class="dash"></i>1D impedance match</span>
+        </span>
+        <span class="im" id="imTxt"></span>
+      </div>
+      <canvas id="scope" aria-label="Longitudinal stress history at three gauges embedded in the target along the shot line"></canvas>
+    </div>
+
+    <div class="exps">
+      <h2>Experiments</h2>
+      <div class="list" id="exps"></div>
+    </div>
+  </div>
+
+  <aside class="panel" aria-label="Setup">
+    <div class="group">
+      <h2>Projectile</h2>
+      <div class="seg wide" id="shapeSeg"></div>
+      <div class="sub">Material</div>
+      <div class="chips" id="pmChips"></div>
+      <div>
+        <div class="row"><label for="speed">Speed</label><output id="speedOut"></output></div>
+        <input type="range" id="speed" min="0.2" max="4" step="0.1" value="1.5">
+      </div>
+      <div>
+        <div class="row"><label for="dia">Diameter</label><output id="diaOut"></output></div>
+        <input type="range" id="dia" min="10" max="80" step="2" value="32">
+      </div>
+      <p class="matinfo" id="projInfo"></p>
+    </div>
+
+    <div class="group">
+      <h2>Target</h2>
+      <div class="seg wide" id="ttypeSeg"></div>
+      <div class="sub" id="tmLabel">Plate material</div>
+      <div class="chips" id="tmChips"></div>
+      <div id="bmWrap" class="group" hidden>
+        <div class="sub">Backing / core material</div>
+        <div class="chips" id="bmChips"></div>
+      </div>
+      <p class="matinfo" id="tgtInfo"></p>
+      <div>
+        <div class="row"><label for="thick">Thickness</label><output id="thickOut"></output></div>
+        <input type="range" id="thick" min="10" max="300" step="5" value="100">
+      </div>
+      <div>
+        <div class="row"><label for="angle">Obliquity</label><output id="angleOut"></output></div>
+        <input type="range" id="angle" min="0" max="85" step="5" value="0">
+      </div>
+      <div>
+        <div class="row"><label for="plen">Plate length</label><output id="plenOut"></output></div>
+        <input type="range" id="plen" min="200" max="1400" step="20" value="640">
+      </div>
+      <div>
+        <div class="sub" style="margin-bottom:6px">Mounting</div>
+        <div class="seg" id="mountSeg"></div>
+      </div>
+      <div id="preWrap">
+        <div class="row"><label for="preload">Bolt preload</label><output id="preOut"></output></div>
+        <input type="range" id="preload" min="0" max="28" step="1" value="20">
+        <p class="note" id="preWarn" hidden></p>
+      </div>
+      <div>
+        <div class="sub" style="margin-bottom:6px">Particle spacing</div>
+        <div class="seg" id="resSeg"></div>
+      </div>
+      <p class="note">Changing the target resets it. The 2 mm setting resolves shock fronts best but runs slower, especially on phones. The plate length is adjustable; tilted plates are shortened to fit the picture. Bolted jaws grip the top and bottom 32 mm, and the bolts are tightened before every shot. Rigid mounting freezes those strips in place instead. The model is plane strain, so energies and bolt loads are per 10 mm of depth.</p>
+      <details class="model">
+        <summary>What the model does</summary>
+        <ul>
+          <li>Each solid is a Lagrangian particle continuum (state-based correspondence) carrying a full stress tensor, with hourglass control.</li>
+          <li>Pressure comes from a Mie–Grüneisen equation of state built on each material's measured linear Us–up shock Hugoniot.</li>
+          <li>Artificial bulk viscosity spreads shocks over a few particles and turns their irreversible work into heat, so shocked material ends up hotter than it started.</li>
+          <li>Metals and polymers follow Johnson–Cook flow stress with strain hardening, strain-rate hardening and thermal softening. Elastic precursors and plastic waves separate on their own.</li>
+          <li>Ductile failure accumulates plastic strain against a stress-triaxiality-dependent limit; tension beyond the spall strength fails material outright.</li>
+          <li>Brittle solids crack perpendicular to the largest principal tension, and comminute under pressure-dependent shear. Cracked faces still carry compression through contact.</li>
+          <li>Contacts between bodies use the same Hugoniot, so the interface pressure matches the impedance-match value.</li>
+          <li>Bolted mounting: steel jaws 24 mm thick grip each end. The rear jaw is fixed to the frame; the front bar is free to move and is pulled tight by M20 grade 8.8 bolts (about 0.2 bolt per 10 mm of depth) through 22 mm clearance holes in the plate. Steel-on-steel friction (μ 0.35) holds the plate until it has slipped the 1 mm clearance; then the bolt shanks bear on the hole walls, and shear off above 47 kN per 10 mm of depth. In tension the bolts stretch elastically, yield at 29 kN (losing preload) and snap after 6 % stretch. Before each shot the assembly is tightened and damped to rest, so the plate starts in a bolted-up equilibrium.</li>
+        </ul>
+      </details>
+    </div>
+  </aside>
+</div>
+
+<script>
+/* The simulation core: material data, physics, clamp, scene building and snapshots.
+   It runs inside a Web Worker (or on the page as a fallback) and talks to the page by messages. */
+function makeMats() {
+  'use strict';
+  var MATS = [
+    { n: 'Steel (RHA)', rho: 7.85, E: 205, nu: .29, c0: 4.57, s: 1.49, g: 1.93, A: .95, B: .51, nh: .26, C: .014, mT: 1.03, eb: .30, spall: 3.0, melt: 1790, cp: .47, Lf: 247, boil: 3134, Lv: 6090, c: [142,153,168] },
+    { n: 'Tungsten', rho: 19.25, E: 411, nu: .28, c0: 4.03, s: 1.237, g: 1.67, A: 1.5, B: .177, nh: .12, C: .016, mT: 1.0, eb: .06, spall: 2.0, melt: 3695, cp: .134, Lf: 285, boil: 5828, Lv: 4482, c: [98,108,128] },
+    { n: 'Aluminium', rho: 2.70, E: 69, nu: .33, c0: 5.35, s: 1.34, g: 2.0, A: .275, B: .114, nh: .42, C: .002, mT: 1.34, eb: .35, spall: 1.2, melt: 925, cp: .90, Lf: 397, boil: 2743, Lv: 10500, c: [196,204,216] },
+    { n: 'Copper', rho: 8.96, E: 117, nu: .34, c0: 3.94, s: 1.49, g: 2.0, A: .09, B: .292, nh: .31, C: .025, mT: 1.09, eb: .60, spall: 1.3, melt: 1358, cp: .385, Lf: 205, boil: 2835, Lv: 4730, c: [196,112,64] },
+    { n: 'Lead', rho: 11.34, E: 16, nu: .44, c0: 2.05, s: 1.46, g: 2.77, A: .012, B: .04, nh: .4, C: .1, mT: 1.0, eb: 1.0, spall: .4, melt: 600, cp: .13, Lf: 23, boil: 2022, Lv: 866, c: [122,134,152] },
+    { n: 'Glass', rho: 2.50, E: 70, nu: .22, c0: 4.08, s: 1.2, g: .9, ts: .07, Y0: 1.5, al: 1.0, Ym: 4.5, melt: 1500, cp: .84, Lf: 0, boil: 2500, Lv: 4000, c: [120,214,220] },
+    { n: 'Alumina', rho: 3.90, E: 370, nu: .22, c0: 7.51, s: 1.0, g: 1.0, ts: .40, Y0: 2.6, al: 1.2, Ym: 7.0, melt: 2345, cp: .88, Lf: 1070, boil: 3250, Lv: 4700, c: [232,226,208] },
+    { n: 'Polycarbonate', rho: 1.20, E: 2.4, nu: .37, c0: 2.33, s: 1.57, g: .61, A: .062, B: .08, nh: .5, C: .05, mT: 1.0, eb: .90, spall: .16, melt: 520, cp: 1.2, Lf: 0, boil: 750, Lv: 1500, c: [140,112,172] },
+    { n: 'Concrete', rho: 2.40, E: 30, nu: .20, c0: 2.64, s: 1.3, g: 1.0, ts: .008, Y0: .045, al: .9, Ym: .6, melt: 1800, cp: .88, Lf: 300, boil: 2500, Lv: 3000, c: [154,150,140] },
+    { n: 'Oak', rho: .70, E: 11, nu: .30, c0: 3.6, s: 1.5, g: 1.0, ts: .05, Y0: .045, al: .5, Ym: .15, melt: 520, cp: 1.7, Lf: 0, boil: 700, Lv: 2000, c: [176,138,88] },
+    // Ti-6Al-4V: Lesuer Johnson–Cook fit; ductility from its JC fracture constants at triaxiality 1/3
+    { n: 'Titanium', rho: 4.43, E: 114, nu: .34, c0: 5.13, s: 1.028, g: 1.23, A: .862, B: .331, nh: .34, C: .012, mT: .8, eb: .12, spall: 3.6, melt: 1900, cp: .526, Lf: 286, boil: 3560, Lv: 8800, c: [172,164,150] },
+    // depleted uranium, U-0.75Ti: Johnson–Cook 1983 strength; low heat capacity makes it soften quickly as it deforms
+    { n: 'Depleted U', rho: 18.6, E: 190, nu: .21, c0: 2.52, s: 1.53, g: 1.6, A: 1.079, B: 1.12, nh: .25, C: .007, mT: 1.0, eb: .25, spall: 3.0, melt: 1473, cp: .117, Lf: 38, boil: 4404, Lv: 1750, c: [104,112,90] }
+  ];
+  var NM = MATS.length;
+  MATS.forEach(function (m) {
+    m.brit = m.ts !== undefined;
+    m.K = m.rho * m.c0 * m.c0;              // bulk modulus from the Hugoniot sound speed, GPa
+    m.G = m.E / (2 * (1 + m.nu));           // shear modulus, GPa
+    m.cL = Math.sqrt((m.K + 4 * m.G / 3) / m.rho); // longitudinal wave speed, km/s
+    m.cpK = 1000 / m.cp;                    // kelvin per (J/mg)
+    // thermal energy (J/mg) at the start/end of melting and vaporisation
+    m.e1 = (m.melt - 300) / m.cpK; m.e2 = m.e1 + m.Lf / 1000;
+    m.e3 = m.e2 + (m.boil - m.melt) / m.cpK; m.e4 = m.e3 + m.Lv / 1000;
+  });
+  return MATS;
+}
+
+function simCore(self) {
+  'use strict';
+  /* Unit system: mm, µs, mg, km/s (= mm/µs), GPa (= kN/mm²), kN, J (= kN·mm).
+     Density in g/cm³ (= mg/mm³). Specific energy in J/mg (= MJ/kg = (km/s)²). */
+  var WW = 1200, WH = 746.67, TX = 780, DEPTH = 10, PLATE_H = 640, CLAMP = 32;
+  var TQ = 0.9;            // Taylor–Quinney: fraction of plastic work converted to heat
+  var CQ = 1.5, CLV = 0.2; // artificial viscosity, quadratic and linear coefficients
+  var CFL = 0.3, DCS = 0.7, MU = 0.1,
+      MU_CLAMP = 0.35, VR_CLAMP = 0.0005, JAW_T = 24, CLEAR = 1, K_BEAR = 300, BOLT_SHEAR = 47,
+      BOLT_EA = 0.2 * 205 * 245, BOLT_FY = 29.4, BOLT_ELONG = 0.06,
+      SETTLE = 100, SETTLE_MAX = 600, SETTLE_C = 0.12, VMAX = 15, VMAX2 = VMAX * VMAX, HG = 0.08;
+
+  /* rho g/cm³; E GPa; nu; c0 km/s, s, g: Us = c0 + s·up and Grüneisen gamma (shock Hugoniot data).
+     Ductile: Johnson–Cook A, B (GPa), nh, C, mT; eb: failure strain at triaxiality 1/3; spall: GPa.
+     Brittle: ts dynamic tensile strength; Y0 + al·p shear strength capped at Ym (GPa).
+     melt and boil K, cp J/g·K, latent heats of fusion Lf and vaporisation Lv in J/g. */
+  var MATS = makeMats(), NM = MATS.length;
+  // pair tables: hourglass modulus (harmonic E) and contact Hugoniot (springs in series)
+  var EP = [], KP = [], SP = [], RP = [], CP = [];
+  for (var a1 = 0; a1 < NM; a1++) for (var a2 = 0; a2 < NM; a2++) {
+    var A1 = MATS[a1], A2 = MATS[a2], q12 = a1 * NM + a2;
+    EP[q12] = 2 * A1.E * A2.E / (A1.E + A2.E);
+    KP[q12] = 2 * A1.K * A2.K / (A1.K + A2.K);
+    SP[q12] = 0.5 * (A1.s + A2.s);
+    RP[q12] = 0.5 * (A1.rho + A2.rho);
+    CP[q12] = Math.sqrt(KP[q12] / RP[q12]);
+  }
+  var FSTR = [];
+  for (var fs = 0; fs < 7; fs++) { var fd = (fs - 3) * 3; FSTR.push(rgb(82 + fd, 98 + fd, 118 + fd)); }
+  var MSTR = MATS.map(function (m) {
+    var a = [];
+    for (var s = 0; s < 7; s++) {
+      var d = (s - 3) * 5;
+      a.push(rgb(Math.max(0, Math.min(255, m.c[0] + d)), Math.max(0, Math.min(255, m.c[1] + d)), Math.max(0, Math.min(255, m.c[2] + d))));
+    }
+    return a;
+  });
+
+  // energy stored by compression along the reference curve, J/mg (used to separate heat from elastic energy)
+  function ecomp(m, eta) {
+    if (eta <= 0) return 0.5 * m.c0 * m.c0 * eta * eta;
+    var d = 1 - m.s * eta; if (d < 0.3) d = 0.3;
+    return m.c0 * m.c0 / (m.s * m.s) * (Math.log(d) + 1 / d - 1);
+  }
+  // temperature from thermal energy, with plateaus while melting and boiling
+  function tempOf(m, eth) {
+    if (eth <= m.e1) return 300 + eth * m.cpK;
+    if (eth <= m.e2) return m.melt + 1e-3 * (eth - m.e1) / (m.e2 - m.e1 + 1e-9);
+    if (eth <= m.e3) return m.melt + (eth - m.e2) * m.cpK;
+    if (eth <= m.e4) return m.boil;
+    return m.boil + (eth - m.e4) * m.cpK;
+  }
+  // 1D impedance match of two Hugoniots (hydrodynamic, strength ignored)
+  function impedance(A, B, v) {
+    var lo = 0, hi = v;
+    for (var k = 0; k < 50; k++) {
+      var u = 0.5 * (lo + hi), w = v - u;
+      if (B.rho * (B.c0 + B.s * u) * u > A.rho * (A.c0 + A.s * w) * w) hi = u; else lo = u;
+    }
+    var uu = 0.5 * (lo + hi);
+    return { u: uu, p: B.rho * (B.c0 + B.s * uu) * uu };
+  }
+
+  /* ---------- state ---------- */
+  var S = { shape: 'rod', pm: 0, speed: 1.5, dia: 32, ttype: 'plate', tm: 2, bm: 0, thick: 100, angle: 0, plen: 640, a: 4, view: 'pres', rate: 100, mount: 'bolted', preload: 20 };
+  var a = 4, V0 = 160, dt = 0.05, paused = false, shots = 0, simT = 0, aimY = WH / 2;
+  var lastStart = 0, lastEnd = 0, lastShotTxt = '', tgtN = 0, shotPeak = 0, vapour = 0;
+
+  /* ---------- storage ---------- */
+  var NP = 64000, NB = 280000;
+  function f32() { return new Float32Array(NP); }
+  // positions and velocities need double precision: slow quasi-static motion (bolting up, creep) moves
+  // particles by less than a single-precision ulp per step at stage coordinates of several hundred mm
+  function f64() { return new Float64Array(NP); }
+  var px = f64(), py = f64(), vx = f64(), vy = f64(), fx = f32(), fy = f32(), im = f32(), ms = f32();
+  var T = f32(), e = f32(), ep = f32(), dm = f32(), melt = f32();
+  var sxx = f32(), syy = f32(), sxy = f32(), pr = f32(), pq = f32(), sl = f32(), pc = f32();
+  var F11 = f32(), F12 = f32(), F21 = f32(), F22 = f32();
+  var G11 = f32(), G12 = f32(), G21 = f32(), G22 = f32();
+  var P11 = f32(), P12 = f32(), P21 = f32(), P22 = f32();
+  var K11 = f32(), K12 = f32(), K22 = f32();
+  var A11 = f32(), A12 = f32(), A21 = f32(), A22 = f32();
+  var B11 = f32(), B12 = f32(), B21 = f32(), B22 = f32();
+  var nxt = new Int32Array(NP);
+  var mat = new Uint8Array(NP), body = new Uint8Array(NP), alive = new Uint8Array(NP), pin = new Uint8Array(NP);
+  var fix = new Uint8Array(NP), sleep = new Uint8Array(NP);
+  var CL = null, settling = false, settleT = 0, pendingFire = false, settleChecks = 0;
+  var nb0 = new Uint8Array(NP), nbl = new Uint8Array(NP), shade = new Uint8Array(NP);
+  var nbp = new Int32Array(NP * 8), nbb = new Int32Array(NP * 8);
+  var bi = new Int32Array(NB), bj = new Int32Array(NB);
+  var bx = new Float32Array(NB), by = new Float32Array(NB), bk = new Float32Array(NB), bch = new Float32Array(NB);
+  var bal = new Uint8Array(NB);
+  var N = 0, NBn = 0;
+  var bodyInit = new Int32Array(64), bodyLive = new Int32Array(64);
+  var head = new Int32Array(1), cols = 1, rows = 1, GO = 160;
+
+  // gauges: three Lagrangian points in the target on the shot line
+  var GMAX = 8000, gT = new Float32Array(GMAX), gV = new Float32Array(GMAX * 3), gN = 0, gIdx = [-1, -1, -1];
+  var gT0 = 0, gNext = 0, gDt = 0.05, gMin = 0, gMaxP = 0, imP = 0, imU = 0;
+
+  function addParticle(x, y, m, b, pinned) {
+    var i = N++;
+    px[i] = x; py[i] = y; vx[i] = 0; vy[i] = 0;
+    mat[i] = m; ms[i] = MATS[m].rho * V0;
+    im[i] = pinned ? 0 : 1 / ms[i];
+    body[i] = b; alive[i] = 1; T[i] = 300; e[i] = 0; ep[i] = 0; dm[i] = 0;
+    sxx[i] = syy[i] = sxy[i] = pr[i] = pq[i] = sl[i] = pc[i] = 0;
+    F11[i] = 1; F12[i] = 0; F21[i] = 0; F22[i] = 1;
+    G11[i] = G12[i] = G21[i] = G22[i] = 0;
+    P11[i] = P12[i] = P21[i] = P22[i] = 0;
+    nbl[i] = 0; nb0[i] = 0;
+    shade[i] = (i * 37 + (i >> 3)) % 7; melt[i] = MATS[m].melt; pin[i] = pinned ? 1 : 0; fix[i] = 0; sleep[i] = 0;
+    for (var k = 0; k < 8; k++) { nbp[i * 8 + k] = -1; nbb[i * 8 + k] = -1; }
+    return i;
+  }
+  function addBond(i, j) {
+    var si = -1, sj = -1, k;
+    for (k = 0; k < 8; k++) { if (nbb[i * 8 + k] === -1) { si = k; break; } }
+    for (k = 0; k < 8; k++) { if (nbb[j * 8 + k] === -1) { sj = k; break; } }
+    if (si < 0 || sj < 0 || NBn >= NB) return;
+    var b = NBn++, dx = px[j] - px[i], dy = py[j] - py[i];
+    var diag = dx * dx + dy * dy > 1.44 * a * a;
+    var kh = HG * EP[mat[i] * NM + mat[j]] * DEPTH * (diag ? 0.5 : 1);
+    var red = ms[i] * ms[j] / (ms[i] + ms[j]);
+    bi[b] = i; bj[b] = j; bx[b] = dx; by[b] = dy;
+    bk[b] = kh; bch[b] = 0.4 * Math.sqrt(kh * red);
+    bal[b] = 1;
+    nbp[i * 8 + si] = j; nbb[i * 8 + si] = b; nbp[j * 8 + sj] = i; nbb[j * 8 + sj] = b;
+    nbl[i]++; nbl[j]++; nb0[i]++; nb0[j]++;
+    if (body[i] < 10) { bodyInit[body[i]]++; bodyLive[body[i]]++; }
+  }
+  function bondBody(s0, s1) {
+    var cut = 1.5 * a, c2 = cut * cut, i, j;
+    var minx = 1e9, miny = 1e9, maxx = -1e9, maxy = -1e9;
+    for (i = s0; i < s1; i++) {
+      if (px[i] < minx) minx = px[i]; if (px[i] > maxx) maxx = px[i];
+      if (py[i] < miny) miny = py[i]; if (py[i] > maxy) maxy = py[i];
+    }
+    var gw = Math.floor((maxx - minx) / cut) + 1, gh = Math.floor((maxy - miny) / cut) + 1;
+    var hd = new Int32Array(gw * gh).fill(-1), nx = new Int32Array(s1 - s0);
+    for (i = s0; i < s1; i++) {
+      var c = (((px[i] - minx) / cut) | 0) + (((py[i] - miny) / cut) | 0) * gw;
+      nx[i - s0] = hd[c]; hd[c] = i;
+    }
+    for (i = s0; i < s1; i++) {
+      var cx = ((px[i] - minx) / cut) | 0, cy = ((py[i] - miny) / cut) | 0;
+      for (var oy = -1; oy <= 1; oy++) {
+        var yy = cy + oy; if (yy < 0 || yy >= gh) continue;
+        for (var ox = -1; ox <= 1; ox++) {
+          var xx = cx + ox; if (xx < 0 || xx >= gw) continue;
+          j = hd[xx + yy * gw];
+          while (j >= 0) {
+            if (j > i) {
+              var dx = px[j] - px[i], dy = py[j] - py[i];
+              if (dx * dx + dy * dy < c2) addBond(i, j);
+            }
+            j = nx[j - s0];
+          }
+        }
+      }
+    }
+  }
+  function unslot(i, b) {
+    for (var k = 0; k < 8; k++) if (nbb[i * 8 + k] === b) { nbp[i * 8 + k] = -1; nbb[i * 8 + k] = -1; return; }
+  }
+  function breakBond(b) {
+    if (!bal[b]) return;
+    bal[b] = 0;
+    var i = bi[b], j = bj[b];
+    unslot(i, b); unslot(j, b);
+    nbl[i]--; nbl[j]--;
+    if (body[i] < 10) bodyLive[body[i]]--;
+  }
+  function breakAll(i) {
+    for (var k = 0; k < 8; k++) { var b = nbb[i * 8 + k]; if (b >= 0) breakBond(b); }
+  }
+  // fail a particle completely: it becomes loose debris that still carries momentum, heat and contact pressure
+  function erode(i) {
+    if (nbl[i] > 0) breakAll(i);
+    var m = MATS[mat[i]];
+    e[i] = Math.max(0, e[i] - ecomp(m, 1 - (F11[i] * F22[i] - F12[i] * F21[i])));
+    T[i] = tempOf(m, e[i]);
+    sxx[i] = syy[i] = sxy[i] = pr[i] = pq[i] = 0; dm[i] = 1;
+    P11[i] = P12[i] = P21[i] = P22[i] = 0;
+    F11[i] = 1; F12[i] = 0; F21[i] = 0; F22[i] = 1;
+    G11[i] = G12[i] = G21[i] = G22[i] = 0;
+  }
+  function addHeat(i, dE) { // joules into particle i
+    if (im[i] === 0) return;
+    var de = dE * im[i];
+    e[i] += de;
+    if (nbl[i] === 0) T[i] = tempOf(MATS[mat[i]], e[i]);
+  }
+
+  /* ---------- physics step (dt in microseconds) ---------- */
+  function step() {
+    var i, j, b, k, n = N, h = dt;
+    var sig = 0;
+    K11.fill(0, 0, n); K12.fill(0, 0, n); K22.fill(0, 0, n);
+    A11.fill(0, 0, n); A12.fill(0, 0, n); A21.fill(0, 0, n); A22.fill(0, 0, n);
+    B11.fill(0, 0, n); B12.fill(0, 0, n); B21.fill(0, 0, n); B22.fill(0, 0, n);
+
+    // 1. shape tensor K = Σ ξ⊗ξ, deformation gradient sums Σ r⊗ξ, and their rates Σ Δv⊗ξ
+    for (b = 0; b < NBn; b++) {
+      if (!bal[b]) continue;
+      i = bi[b]; j = bj[b];
+      if (!alive[i] && !alive[j]) continue;
+      var xx = bx[b], xy = by[b];
+      var rx = px[j] - px[i], ry = py[j] - py[i], ux = vx[j] - vx[i], uy = vy[j] - vy[i];
+      var kxx = xx * xx, kxy = xx * xy, kyy = xy * xy;
+      K11[i] += kxx; K12[i] += kxy; K22[i] += kyy; K11[j] += kxx; K12[j] += kxy; K22[j] += kyy;
+      var t1 = rx * xx, t2 = rx * xy, t3 = ry * xx, t4 = ry * xy;
+      A11[i] += t1; A12[i] += t2; A21[i] += t3; A22[i] += t4; A11[j] += t1; A12[j] += t2; A21[j] += t3; A22[j] += t4;
+      t1 = ux * xx; t2 = ux * xy; t3 = uy * xx; t4 = uy * xy;
+      B11[i] += t1; B12[i] += t2; B21[i] += t3; B22[i] += t4; B11[j] += t1; B12[j] += t2; B21[j] += t3; B22[j] += t4;
+    }
+
+    // 2. constitutive update at each particle
+    for (i = 0; i < n; i++) {
+      if (!alive[i] || nbl[i] === 0) continue;
+      var m = MATS[mat[i]];
+      var k11 = K11[i], k12 = K12[i], k22 = K22[i];
+      var dK = k11 * k22 - k12 * k12, trK = k11 + k22;
+      if (dK < 0.025 * trK * trK) { erode(i); continue; }   // too few independent bonds left
+      var q11 = k22 / dK, q22 = k11 / dK, q12 = -k12 / dK;  // K⁻¹
+      var f11 = A11[i] * q11 + A12[i] * q12, f12 = A11[i] * q12 + A12[i] * q22;
+      var f21 = A21[i] * q11 + A22[i] * q12, f22 = A21[i] * q12 + A22[i] * q22;
+      var d11 = B11[i] * q11 + B12[i] * q12, d12 = B11[i] * q12 + B12[i] * q22;
+      var d21 = B21[i] * q11 + B22[i] * q12, d22 = B21[i] * q12 + B22[i] * q22;
+      var J = f11 * f22 - f12 * f21;
+      if (!(J > 0.25 && J < 3)) { erode(i); continue; }
+      F11[i] = f11; F12[i] = f12; F21[i] = f21; F22[i] = f22;
+      G11[i] = d11; G12[i] = d12; G21[i] = d21; G22[i] = d22;
+      var i11 = f22 / J, i12 = -f12 / J, i21 = -f21 / J, i22 = f11 / J; // F⁻¹
+      // velocity gradient L = Ḟ F⁻¹, rate of deformation D and spin W
+      var L11 = d11 * i11 + d12 * i21, L12 = d11 * i12 + d12 * i22;
+      var L21 = d21 * i11 + d22 * i21, L22 = d21 * i12 + d22 * i22;
+      var D12 = 0.5 * (L12 + L21), W12 = 0.5 * (L12 - L21), trD = L11 + L22;
+      var rho = m.rho / J, eta = 1 - J;
+
+      // artificial bulk viscosity in compression (von Neumann–Richtmyer quadratic + linear term)
+      var q = 0;
+      if (trD < 0) q = rho * a * (CQ * CQ * a * trD * trD - CLV * m.c0 * trD);
+      // p dV and viscous work into specific internal energy
+      e[i] -= (pr[i] + q) * trD / rho * h;
+
+      // Mie–Grüneisen EOS referenced to the linear Us–up Hugoniot
+      var p, den = 1, Kt = m.K;
+      if (eta > 0) {
+        den = 1 - m.s * eta; if (den < 0.3) den = 0.3;
+        var ph = m.K * eta / (den * den);
+        p = ph * (1 - 0.5 * m.g * eta) + m.g * m.rho * e[i];
+        Kt = m.K * (1 + m.s * eta) / (den * den * den);
+      } else p = m.K * eta + m.g * m.rho * e[i];
+
+      // deviatoric stress: hypoelastic, Jaumann rate, plane strain (szz = -(sxx + syy))
+      var tr3 = trD / 3, Sx = sxx[i], Sy = syy[i], Sxy = sxy[i], G2 = 2 * m.G;
+      var nSx = Sx + h * (G2 * (L11 - tr3) + 2 * W12 * Sxy);
+      var nSy = Sy + h * (G2 * (L22 - tr3) - 2 * W12 * Sxy);
+      var nSxy = Sxy + h * (G2 * D12 + W12 * (Sy - Sx));
+      var nSz = -(nSx + nSy);
+      var seq = Math.sqrt(1.5 * (nSx * nSx + nSy * nSy + nSz * nSz + 2 * nSxy * nSxy));
+      var failed = false;
+
+      if (!m.brit) {
+        var Ts = (T[i] - 300) / (melt[i] - 300), soft = Ts <= 0 ? 1 : Ts >= 1 ? 0 : 1 - Math.pow(Ts, m.mT);
+        if (seq > m.A * soft * 0.5) {
+          var a1x = L11 - tr3, a2x = L22 - tr3;
+          var edot = Math.sqrt((2 / 3) * (a1x * a1x + a2x * a2x + tr3 * tr3 + 2 * D12 * D12)) * 1e6; // 1/s
+          var Y = (m.A + (ep[i] > 0 ? m.B * Math.pow(ep[i], m.nh) : 0)) * (1 + m.C * Math.log(edot > 1 ? edot : 1)) * soft;
+          if (seq > Y) {
+            var dep = (seq - Y) / (3 * m.G), sc = seq > 0 ? Y / seq : 0;
+            nSx *= sc; nSy *= sc; nSxy *= sc;
+            ep[i] += dep;
+            e[i] += TQ * Y * dep / rho;
+            var tri = -p / (Y > 1e-4 ? Y : 1e-4);
+            var fs = Math.exp(-1.5 * (tri - 1 / 3)); if (fs < 0.3) fs = 0.3; else if (fs > 4) fs = 4;
+            dm[i] += dep / (m.eb * fs);
+            if (dm[i] >= 1) failed = true;
+          }
+        }
+        if (p < -m.spall) failed = true;
+      } else {
+        // brittle: intact strength Y0 + al·p; once it is exceeded the material is comminuted rubble that
+        // keeps carrying pressure with a reduced, purely frictional strength and no tension
+        var rub = dm[i] >= 1;
+        if (rub && p < 0) p = 0;
+        var Yb = rub ? 0.4 * m.al * p : m.Y0 + m.al * (p > 0 ? p : 0);
+        if (Yb > m.Ym) Yb = m.Ym;
+        if (seq > Yb) {
+          if (!rub) { dm[i] = 1; rub = true; Yb = 0.4 * m.al * (p > 0 ? p : 0); if (Yb > m.Ym) Yb = m.Ym; }
+          if (seq > Yb) {
+            var depb = (seq - Yb) / (3 * m.G), scb = seq > 0 ? Yb / seq : 0;
+            nSx *= scb; nSy *= scb; nSxy *= scb;
+            ep[i] += depb; e[i] += TQ * Yb * depb / rho;
+          }
+        }
+        {
+          var sx = nSx - p, sy = nSy - p, cc = 0.5 * (sx + sy), dd = 0.5 * (sx - sy);
+          var rr = Math.sqrt(dd * dd + nSxy * nSxy);
+          if (cc + rr > (rub ? 0.1 * m.ts : m.ts)) {
+            // crack perpendicular to the largest principal tension: cut the bonds that carry it
+            var th = 0.5 * Math.atan2(2 * nSxy, sx - sy), cnx = Math.cos(th), cny = Math.sin(th);
+            for (k = 0; k < 8; k++) {
+              var bb = nbb[i * 8 + k]; if (bb < 0) continue;
+              var o = nbp[i * 8 + k], ox = px[o] - px[i], oy = py[o] - py[i];
+              if (Math.abs(ox * cnx + oy * cny) > 0.6 * Math.sqrt(ox * ox + oy * oy)) breakBond(bb);
+            }
+            if (dm[i] < 0.5) dm[i] = 0.5;
+            sxx[i] = syy[i] = sxy[i] = 0; pr[i] = p > 0 ? p : 0; pq[i] = pr[i]; sl[i] = pr[i];
+            P11[i] = P12[i] = P21[i] = P22[i] = 0;
+            if (nbl[i] === 0) erode(i);
+            continue;
+          }
+        }
+      }
+      if (failed) { erode(i); continue; }
+
+      sxx[i] = nSx; syy[i] = nSy; sxy[i] = nSxy; pr[i] = p;
+      var ptot = p + q;
+      pq[i] = ptot; sl[i] = ptot - nSx;
+      var Tn = tempOf(m, e[i] - ecomp(m, eta));
+      T[i] = Tn < 100 ? 100 : Tn;
+
+      // first Piola stress P = J σ F⁻ᵀ, stored premultiplied by K⁻¹ for the bond force pass
+      var s11 = nSx - ptot, s22 = nSy - ptot, s12 = nSxy;
+      var p11 = J * (s11 * i11 + s12 * i12), p12 = J * (s11 * i21 + s12 * i22);
+      var p21 = J * (s12 * i11 + s22 * i12), p22 = J * (s12 * i21 + s22 * i22);
+      P11[i] = p11 * q11 + p12 * q12; P12[i] = p11 * q12 + p12 * q22;
+      P21[i] = p21 * q11 + p22 * q12; P22[i] = p21 * q12 + p22 * q22;
+
+      // wave speed for the stability limit
+      var ct = Math.sqrt((Kt + 4 * m.G / 3) / rho) + 2 * CQ * CQ * a * (trD < 0 ? -trD : 0);
+      var vv = Math.sqrt(vx[i] * vx[i] + vy[i] * vy[i]);
+      if (ct + vv > sig) sig = ct + vv;
+    }
+
+    // 3. bond forces: correspondence stress forces plus hourglass control on the non-affine part
+    for (i = 0; i < n; i++) { fx[i] = 0; fy[i] = 0; }
+    for (b = 0; b < NBn; b++) {
+      if (!bal[b]) continue;
+      i = bi[b]; j = bj[b];
+      if (!alive[i] && !alive[j]) continue;
+      var X = bx[b], Yv = by[b];
+      var gx = V0 * ((P11[i] + P11[j]) * X + (P12[i] + P12[j]) * Yv);
+      var gy = V0 * ((P21[i] + P21[j]) * X + (P22[i] + P22[j]) * Yv);
+      var Rx = px[j] - px[i], Ry = py[j] - py[i];
+      var ex = Rx - 0.5 * ((F11[i] + F11[j]) * X + (F12[i] + F12[j]) * Yv);
+      var ey = Ry - 0.5 * ((F21[i] + F21[j]) * X + (F22[i] + F22[j]) * Yv);
+      var evx = vx[j] - vx[i] - 0.5 * ((G11[i] + G11[j]) * X + (G12[i] + G12[j]) * Yv);
+      var evy = vy[j] - vy[i] - 0.5 * ((G21[i] + G21[j]) * X + (G22[i] + G22[j]) * Yv);
+      gx += bk[b] * ex + bch[b] * evx; gy += bk[b] * ey + bch[b] * evy;
+      fx[i] += gx; fy[i] += gy; fx[j] -= gx; fy[j] -= gy;
+      if (Rx * Rx + Ry * Ry > 4 * (X * X + Yv * Yv)) breakBond(b);
+    }
+
+    // 4. contact between particles that are not bonded: Hugoniot pressure on the overlap, shock viscosity, friction
+    head.fill(-1);
+    pc.fill(0, 0, n);
+    var gxc, gyc, c;
+    for (i = 0; i < n; i++) {
+      if (!alive[i] || nbl[i] === 8) continue;   // a fully bonded interior particle can't touch another body
+      gxc = ((px[i] + GO) / a) | 0; gyc = ((py[i] + GO) / a) | 0;
+      if (gxc < 0) gxc = 0; else if (gxc >= cols) gxc = cols - 1;
+      if (gyc < 0) gyc = 0; else if (gyc >= rows) gyc = rows - 1;
+      c = gxc + gyc * cols; nxt[i] = head[c]; head[c] = i;
+    }
+    var dc = a, dc2 = dc * dc, area = a * DEPTH;
+    for (i = 0; i < n; i++) {
+      if (!alive[i] || nbl[i] === 8) continue;
+      gxc = ((px[i] + GO) / a) | 0; gyc = ((py[i] + GO) / a) | 0;
+      if (gxc < 0) gxc = 0; else if (gxc >= cols) gxc = cols - 1;
+      if (gyc < 0) gyc = 0; else if (gyc >= rows) gyc = rows - 1;
+      for (var oy2 = -1; oy2 <= 1; oy2++) {
+        var cy2 = gyc + oy2; if (cy2 < 0 || cy2 >= rows) continue;
+        for (var ox2 = -1; ox2 <= 1; ox2++) {
+          var cx2 = gxc + ox2; if (cx2 < 0 || cx2 >= cols) continue;
+          j = head[cx2 + cy2 * cols];
+          while (j >= 0) {
+            if (j > i) {
+              var ddx = px[j] - px[i], ddy = py[j] - py[i], d2 = ddx * ddx + ddy * ddy;
+              // same-body pairs (bonded or not) only touch inside 0.7a, so breaking a bond never releases stored overlap
+              var same = body[i] === body[j], dcp = same ? DCS * a : dc;
+              if (d2 < dcp * dcp && (im[i] + im[j]) > 0) {
+                var dist = Math.sqrt(d2);
+                if (dist < 1e-4) { ddx = 1e-4; ddy = 0; dist = 1e-4; }
+                var nx2 = ddx / dist, ny2 = ddy / dist, pi = mat[i] * NM + mat[j];
+                var x = (dcp - dist) / dcp, sp = SP[pi], xcap = 0.4 / sp, xs = x < xcap ? x : xcap;
+                var dn = 1 - sp * xs;
+                // intact faces meet on the full Hugoniot; loose debris is a softer, lossy granular contact
+                var kf = (nbl[i] > 0 && nbl[j] > 0) ? 1 : 0.15;
+                var pcon = kf * KP[pi] * xs / (dn * dn);
+                if (x > xcap) pcon += kf * KP[pi] * (1 + sp * xs) / (dn * dn * dn) * (x - xcap);
+                var rvx = vx[j] - vx[i], rvy = vy[j] - vy[i];
+                var vn = rvx * nx2 + rvy * ny2, qc = 0;
+                if (vn < 0) qc = RP[pi] * (CQ * CQ * vn * vn - CLV * CP[pi] * vn);
+                if (kf < 1 && vn < 0) qc -= 0.08 * RP[pi] * CP[pi] * vn;
+                var Fn = (pcon + qc) * area;
+                if (Fn < 0) { qc -= Fn / area; Fn = 0; }
+                fx[i] -= nx2 * Fn; fy[i] -= ny2 * Fn; fx[j] += nx2 * Fn; fy[j] += ny2 * Fn;
+                // Coulomb friction, regularised at low slip speed
+                var tvx = rvx - vn * nx2, tvy = rvy - vn * ny2, vt = Math.sqrt(tvx * tvx + tvy * tvy);
+                var heat = qc * area * (vn < 0 ? -vn : 0) * h;
+                if (vt > 1e-6) {
+                  // jaw faces grip with steel-on-steel friction and a tight stick band; molten faces slide freely.
+                  // The regularising speed never drops below what keeps the explicit update stable.
+                  var grip = fix[i] !== fix[j];
+                  var mu = (T[i] >= melt[i] || T[j] >= melt[j]) ? 0 : grip ? MU_CLAMP : MU;
+                  var vr = grip ? VR_CLAMP : 0.01, vrMin = 2 * mu * Fn * h * (im[i] + im[j]);
+                  if (vr < vrMin) vr = vrMin;
+                  var ft = mu * Fn * Math.tanh(vt / vr);
+                  var tx = tvx / vt, ty = tvy / vt;
+                  fx[i] += tx * ft; fy[i] += ty * ft; fx[j] -= tx * ft; fy[j] -= ty * ft;
+                  heat += ft * vt * h;
+                }
+                if (heat > 0) { addHeat(i, 0.5 * heat); addHeat(j, 0.5 * heat); }
+                var pp = pcon + qc;
+                if (pp > pc[i]) pc[i] = pp;
+                if (pp > pc[j]) pc[j] = pp;
+                var cs2 = CP[pi] * Math.sqrt(kf * (1 + sp * xs) / (dn * dn * dn)) + (vn < 0 ? -vn : 0) * (1 + 2 * CQ * CQ);
+                if (cs2 > sig) sig = cs2;
+              }
+            }
+            j = nxt[j];
+          }
+        }
+      }
+    }
+
+    if (CL) clampForces();
+
+    // 5. integrate (symplectic Euler)
+    for (i = 0; i < n; i++) {
+      if (!alive[i]) continue;
+      if (im[i] !== 0) {
+        vx[i] += fx[i] * im[i] * h; vy[i] += fy[i] * im[i] * h;
+        var sp2 = vx[i] * vx[i] + vy[i] * vy[i];
+        if (sp2 > VMAX2) { var scv = VMAX / Math.sqrt(sp2); vx[i] *= scv; vy[i] *= scv; sp2 = VMAX2; }
+        px[i] += vx[i] * h; py[i] += vy[i] * h;
+        if (px[i] !== px[i] || py[i] !== py[i] || px[i] < -GO + 5 || px[i] > WW + GO - 5 || py[i] < -GO + 5 || py[i] > WH + GO - 5) {
+          alive[i] = 0; breakAll(i); continue;
+        }
+        if (nbl[i] === 0) { var vf = Math.sqrt(sp2) * 1.5; if (vf > sig) sig = vf; }
+      }
+      if (T[i] > melt[i] && nbl[i] > 0 && im[i] !== 0) erode(i);
+      if (nbl[i] === 0 && im[i] !== 0 && e[i] > MATS[mat[i]].e4) { alive[i] = 0; vapour++; }
+    }
+    simT += h;
+
+    // 6. gauges
+    if (gIdx[0] >= 0 && gN < GMAX && simT >= gNext) {
+      var t = simT - gT0;
+      if (t >= 0) {
+        gT[gN] = t;
+        for (k = 0; k < 3; k++) {
+          var gi = gIdx[k], val = NaN;
+          if (gi >= 0 && alive[gi] && nbl[gi] > 0) val = sl[gi];
+          gV[gN * 3 + k] = val;
+          if (val === val) { if (val > gMaxP) gMaxP = val; if (val < gMin) gMin = val; }
+        }
+        gN++;
+      }
+      gNext = simT + gDt;
+    }
+
+    // next stable step
+    var nd = CFL * a / (sig > 0.5 ? sig : 0.5);
+    dt = nd < 0.002 ? 0.002 : nd > 0.25 ? 0.25 : nd;
+    return h;
+  }
+
+  /* ---------- bolted clamp ---------- */
+  function meanAlong(list, ux, uy) {
+    var sum = 0, n = 0;
+    for (var k = 0; k < list.length; k++) { var p = list[k]; if (!alive[p]) continue; sum += px[p] * ux + py[p] * uy; n++; }
+    return n ? sum / n : NaN;
+  }
+  function gapOf(E) { return meanAlong(E.rear, CL.nx, CL.ny) - meanAlong(E.front, CL.nx, CL.ny); }
+  function slipRaw(E) { return meanAlong(E.holes, CL.tx, CL.ty) - meanAlong(E.jawFace, CL.tx, CL.ty); }
+  function clampForces() {
+    var nx = CL.nx, ny = CL.ny, tx = CL.tx, ty = CL.ty, KA = CL.ka, CA = CL.ca;
+    for (var e = 0; e < CL.ends.length; e++) {
+      var E = CL.ends[e], F, k, p;
+      // bolt row: torqued to the preload while settling, then an elastic-plastic bar that can snap
+      if (settling) F = S.preload;
+      else if (E.state >= 2) F = 0;
+      else {
+        var gap = gapOf(E);
+        F = gap === gap ? E.F0 + E.kb * (gap - E.gap0) : 0;
+        if (F > BOLT_FY) {
+          var dp = (F - BOLT_FY) / E.kb;
+          E.gap0 += dp; E.stretch += dp; F = BOLT_FY; E.state = 1;
+          if (E.stretch > BOLT_ELONG * E.L) { E.state = 2; F = 0; }
+        }
+        if (F < 0) F = 0;
+      }
+      E.F = F;
+      var ff = F / E.front.length, fr = F / E.rear.length;
+      for (k = 0; k < E.front.length; k++) { p = E.front[k]; if (alive[p]) { fx[p] += nx * ff; fy[p] += ny * ff; } }
+      if (settling) {
+        // while tightening, the bar flexes under bolt and jaw loads as usual, but its overall approach is a
+        // massless servo driven by the unbalanced load, which removes the slow bar-on-plate oscillation
+        var net = 0, mv = 0, nb = E.bar.length;
+        for (k = 0; k < nb; k++) { p = E.bar[k]; net += fx[p] * nx + fy[p] * ny; mv += vx[p] * nx + vy[p] * ny; }
+        var vT = E.g * net, corr = -net / nb, dv = vT - mv / nb; E.vs = vT;
+        for (k = 0; k < nb; k++) { p = E.bar[k]; fx[p] += nx * corr; fy[p] += ny * corr; vx[p] += nx * dv; vy[p] += ny * dv; }
+      } else if (E.state < 2 && E.holes.length) {
+        // bolt shanks in clearance holes: once the plate has slipped the clearance they bear on it
+        var sr = slipRaw(E) - E.slip0, over = sr > CLEAR ? sr - CLEAR : sr < -CLEAR ? sr + CLEAR : 0;
+        if (over !== 0) {
+          var vrel = 0, nh = 0;
+          for (k = 0; k < E.holes.length; k++) { p = E.holes[k]; if (alive[p]) { vrel += vx[p] * tx + vy[p] * ty; nh++; } }
+          vrel = nh ? vrel / nh : 0;
+          var Fb = -(K_BEAR * over + E.cb * vrel * (over * vrel > 0 ? 1 : 0));
+          E.bear = Math.abs(Fb);
+          if (E.bear > BOLT_SHEAR) { E.state = 3; E.bear = 0; }
+          else if (nh) {
+            var fh = Fb / nh, fa = -Fb / (E.front.length + E.rear.length);
+            for (k = 0; k < E.holes.length; k++) { p = E.holes[k]; if (alive[p]) { fx[p] += tx * fh; fy[p] += ty * fh; } }
+            for (k = 0; k < E.front.length; k++) { p = E.front[k]; if (alive[p]) { fx[p] += tx * fa; fy[p] += ty * fa; } }
+            for (k = 0; k < E.rear.length; k++) { p = E.rear[k]; if (alive[p]) { fx[p] += tx * fa; fy[p] += ty * fa; } }
+          }
+        } else E.bear = 0;
+      }
+      for (k = 0; k < E.rear.length; k++) { p = E.rear[k]; if (alive[p]) { fx[p] -= nx * fr; fy[p] -= ny * fr; } }
+      // frame: holds every anchored row along the plate, and the rear jaw across it as well
+      for (k = 0; k < E.ai.length; k++) {
+        p = E.ai[k]; if (!alive[p]) continue;
+        var dx = px[p] - E.ax[k], dy = py[p] - E.ay[k];
+        var ft = -(KA * (dx * tx + dy * ty) + CA * (vx[p] * tx + vy[p] * ty));
+        fx[p] += tx * ft; fy[p] += ty * ft;
+        if (E.an[k]) {
+          var fn = -(KA * (dx * nx + dy * ny) + CA * (vx[p] * nx + vy[p] * ny));
+          fx[p] += nx * fn; fy[p] += ny * fn;
+        }
+      }
+    }
+  }
+  function settleStep() {
+    var h = step(), f = Math.exp(-SETTLE_C * h);
+    settleT += h;
+    for (var i = 0; i < N; i++) if (alive[i]) { vx[i] *= f; vy[i] *= f; }
+    if (settleT >= SETTLE_MAX) { finishSettle(); return; }
+    if (settleT >= SETTLE && (++settleChecks & 7) === 0) {
+      var vm = 0, vs = 0;
+      for (var q = 0; q < N; q++) if (alive[q]) { var v2 = vx[q] * vx[q] + vy[q] * vy[q]; if (v2 > vm) vm = v2; }
+      CL.ends.forEach(function (E) { vs = Math.max(vs, Math.abs(E.vs)); });
+      if (Math.sqrt(vm) < 2e-4 && vs < 5e-5) finishSettle();
+    }
+  }
+  function finishSettle() {
+    settling = false;
+    for (var i = 0; i < N; i++) {
+      if (sleep[i]) { alive[i] = 1; sleep[i] = 0; }
+      vx[i] = 0; vy[i] = 0;
+    }
+    CL.ends.forEach(function (E) {
+      E.F0 = S.preload; E.F = S.preload; E.gap0 = gapOf(E); E.slip0 = slipRaw(E);
+      E.state = 0; E.stretch = 0;
+    });
+    simT = 0;
+    if (pendingFire) { pendingFire = false; fire(); }
+  }
+
+  /* ---------- building the scene ---------- */
+  var plateHalf = 48;
+  function resetSim() {
+    N = 0; NBn = 0; vapour = 0; bodyInit.fill(0); bodyLive.fill(0); shots = 0; simT = 0; lastShotTxt = ''; lastStart = lastEnd = 0;
+    a = S.a; V0 = a * a * DEPTH;
+    cols = Math.ceil((WW + 2 * GO) / a) + 2; rows = Math.ceil((WH + 2 * GO) / a) + 2;
+    head = new Int32Array(cols * rows);
+    gN = 0; gIdx = [-1, -1, -1]; gMin = 0; gMaxP = 0; imP = 0; shotPeak = 0;
+    gEpoch++; gSent = 0;
+    post({ t: 'shot', imTxt: '', hint: null });
+    CL = null; settling = false; settleT = 0; pendingFire = false;
+  }
+  var plenEff = 640;
+  function buildTarget() {
+    resetSim();
+    var t = Math.max(2, Math.round(S.thick / a));
+    var R, clampRows = Math.max(1, Math.round(CLAMP / a));
+    var th = S.angle * Math.PI / 180, cs = Math.cos(th), sn = Math.sin(th);
+    var layers;
+    if (S.ttype === 'plate') layers = [{ n: t, m: S.tm, b: 1 }];
+    else if (S.ttype === 'composite') {
+      var nf = Math.max(1, Math.round(t * 0.4));
+      layers = [{ n: nf, m: S.tm, b: 1 }, { n: Math.max(1, t - nf), m: S.bm, b: 1 }];
+    } else if (S.ttype === 'sandwich') {
+      var no = Math.max(1, Math.round(t * 0.3)), nc = Math.max(1, t - 2 * no);
+      layers = [{ n: no, m: S.tm, b: 1 }, { n: nc, m: S.bm, b: 1 }, { n: no, m: S.tm, b: 1 }];
+    } else {
+      var t1 = Math.max(2, Math.round(t / 2));
+      layers = [{ n: t1, m: S.tm, b: 1 }, { n: Math.round(120 / a), m: -1, b: 0 }, { n: t1, m: S.tm, b: 2 }];
+    }
+    var total = 0; layers.forEach(function (l) { total += l.n; });
+    // a longer plate sticks out of the picture when tilted; shorten it to fit
+    var tTot = total * a + (S.mount === 'bolted' ? 2 * (JAW_T + 4) : 0), yLim = WH / 2 - 20, xLim = WW - TX - 20, Lm = S.plen;
+    if (cs > 1e-3) Lm = Math.min(Lm, (2 * yLim - tTot * sn) / cs);
+    if (sn > 1e-3) Lm = Math.min(Lm, (2 * xLim - tTot * cs) / sn);
+    Lm = Math.max(Math.min(S.plen, 8 * CLAMP), Lm);
+    R = Math.max(2 * clampRows + 2, Math.floor(Lm / a)); plenEff = R * a;
+    var col = 0, starts = {}, bolted = S.mount === 'bolted', lastCol = [], plateRows = [];
+    layers.forEach(function (l) {
+      for (var ix = 0; ix < l.n; ix++, col++) {
+        if (l.m < 0) continue;
+        for (var iy = 0; iy < R; iy++) {
+          if (N >= NP - 6000) continue;
+          var lx = (col - (total - 1) / 2) * a, ly = (iy - (R - 1) / 2) * a;
+          var X = TX + lx * cs - ly * sn, Y = WH / 2 + lx * sn + ly * cs;
+          var i = addParticle(X, Y, l.m, l.b, !bolted && (iy < clampRows || iy >= R - clampRows));
+          if (starts[l.b] === undefined) starts[l.b] = i;
+          if (col === total - 1) lastCol[iy] = i;
+          plateRows.push(i, iy, col);
+        }
+      }
+    });
+    Object.keys(starts).map(Number).sort().forEach(function (id) {
+      var s0 = starts[id], s1 = s0;
+      while (s1 < N && body[s1] === id) s1++;
+      bondBody(s0, s1);
+    });
+    tgtN = N;
+    plateHalf = total * a / 2 + Math.abs(sn) * plenEff / 2;
+    if (bolted) buildClamp(total, R, clampRows, cs, sn, layers, lastCol, plateRows);
+    var cmax = 0;
+    for (var m = 0; m < NM; m++) if (m === S.tm || m === S.bm || m === S.pm) cmax = Math.max(cmax, MATS[m].cL);
+    dt = CFL * a / (cmax + 4);
+  }
+
+  function buildClamp(total, R, clampRows, cs, sn, layers, lastCol, plateRows) {
+    var jt = Math.max(3, Math.round(JAW_T / a));
+    var gapC0 = -1, gapC1 = -1, c0 = 0;
+    layers.forEach(function (l) { if (l.m < 0) { gapC0 = c0; gapC1 = c0 + l.n; } c0 += l.n; });
+    var steel = MATS[0], mStl = steel.rho * V0;
+    CL = { nx: cs, ny: sn, tx: -sn, ty: cs, ka: 0.5 * steel.E * DEPTH, ends: [] };
+    CL.ca = 2 * Math.sqrt(CL.ka * mStl);
+    // Pre-compress the clamped strip to the state the preload produces (uniaxial strain through the
+    // thickness plus the contact overlaps), so settling only has to remove small residuals.
+    var colMat = [], pc0 = 0, pClamp = S.preload / (clampRows * a * DEPTH);
+    layers.forEach(function (l) { for (var q = 0; q < l.n; q++) colMat[pc0++] = l.m < 0 ? 0 : l.m; });
+    // the strip is short and free at the plate end, so it compresses close to unconfined plane strain
+    function Mc(m) { var K = MATS[m].K, G = MATS[m].G, Ey = 9 * K * G / (3 * K + G), nu = (3 * K - 2 * G) / (2 * (3 * K + G)); return Ey / (1 - nu * nu); }
+    function lap(m1, m2) { return a * pClamp / KP[m1 * NM + m2]; }
+    var u = [];
+    u[total - 1] = lap(colMat[total - 1], 0);
+    for (var c = total - 2; c >= 0; c--) {
+      var inGap = function (q) { return q >= gapC0 && q < gapC1; };
+      var joint = gapC0 >= 0 && inGap(c) !== inGap(c + 1);    // plate meets spacer: a contact, not a bond
+      u[c] = u[c + 1] + (joint ? lap(colMat[c], colMat[c + 1]) : 0.5 * pClamp * a * (1 / Mc(colMat[c]) + 1 / Mc(colMat[c + 1])));
+    }
+    var uFront = u[0] + lap(colMat[0], 0);
+    // taper the pre-compression into the free plate so the strip edge isn't sheared abruptly
+    var taper = Math.max(32, 0.6 * S.thick), tRows = Math.ceil(taper / a);
+    for (var q3 = 0; q3 < plateRows.length; q3 += 3) {
+      var rr = plateRows[q3 + 1], dd = rr < clampRows ? 0 : rr >= R - clampRows ? 0 : Math.min(rr - clampRows + 1, R - clampRows - rr);
+      var wgt = 1 - dd * a / taper;
+      if (wgt > 0) { var pp = plateRows[q3], uu = u[plateRows[q3 + 2]] * wgt; px[pp] += cs * uu; py[pp] += sn * uu; }
+    }
+    function place(cx, iy, b) {
+      var lx = (cx - (total - 1) / 2) * a, ly = (iy - (R - 1) / 2) * a;
+      var sh = cx < 0 ? uFront : cx >= total ? 0 : u[cx];
+      var p = addParticle(TX + lx * cs - ly * sn + cs * sh, WH / 2 + lx * sn + ly * cs + sn * sh, 0, b, false);
+      fix[p] = 1; return p;
+    }
+    for (var e = 0; e < 2; e++) {
+      // jaw rows [y0, y1) cover the clamped strip; the bolt row passes through clearance holes at its middle
+      var y0 = e === 0 ? 0 : R - clampRows, y1 = y0 + clampRows;
+      var pr0 = y0, pr1 = y1, boltRow = y0 + (clampRows >> 1);
+      var E = { front: [], rear: [], ai: [], ax: [], ay: [], an: [], plateFace: [], jawFace: [],
+        F: 0, F0: 0, gap0: 0, stretch: 0, state: 0, slip0: 0, bf: -1, br: -1, bar: [], vs: 0, holes: [], bear: 0 };
+      var anchor = function (p, nrm) { E.ai.push(p); E.ax.push(px[p]); E.ay.push(py[p]); E.an.push(nrm ? 1 : 0); };
+      var s0 = N, k, iy, p;
+      for (k = 0; k < jt; k++) for (iy = y0; iy < y1; iy++) {       // front clamp bar, impact side
+        p = place(-1 - k, iy, 3 + 2 * e); E.bar.push(p);
+        if (k === 0) E.jawFace.push(p);
+        if (k === jt - 1) { E.front.push(p); anchor(p, false); if (iy === boltRow) E.bf = p; }
+      }
+      bondBody(s0, N); s0 = N;
+      for (k = 0; k < jt; k++) for (iy = y0; iy < y1; iy++) {       // rear jaw, part of the frame
+        p = place(total + k, iy, 4 + 2 * e);
+        if (k === 0 && iy >= pr0 && iy < pr1) E.jawFace.push(p);
+        if (k === jt - 1) { E.rear.push(p); anchor(p, true); if (iy === boltRow) E.br = p; }
+      }
+      bondBody(s0, N);
+      if (gapC0 >= 0) {                                              // spacer block between spaced plates
+        s0 = N;
+        for (k = gapC0; k < gapC1; k++) for (iy = pr0; iy < pr1; iy++) {
+          p = place(k, iy, 7 + e);
+          if (k === ((gapC0 + gapC1) >> 1)) anchor(p, false);
+        }
+        bondBody(s0, N);
+      }
+      for (iy = pr0; iy < pr1; iy++) if (lastCol[iy] !== undefined) E.plateFace.push(lastCol[iy]);
+      for (var q4 = 0; q4 < plateRows.length; q4 += 3) if (plateRows[q4 + 1] === boltRow) E.holes.push(plateRows[q4]);
+      if (gapC0 >= 0) for (var q5 = tgtN; q5 < N; q5++) if (body[q5] === 7 + e && Math.abs(((py[q5] - WH / 2) * cs - (px[q5] - TX) * sn) - (boltRow - (R - 1) / 2) * a) < 0.5 * a) E.holes.push(q5);
+      var mh = 0; E.holes.forEach(function (q6) { mh += ms[q6]; });
+      E.cb = 2 * Math.sqrt(K_BEAR * mh);
+      E.L = (total + 2 * jt - 1) * a; E.kb = BOLT_EA / E.L;
+      // servo gain for settling: close the gap error over a few through-thickness wave transits
+      var comp = 0, cmin = 1e9;
+      for (var cc = 0; cc < total; cc++) { comp += a / Mc(colMat[cc]); cmin = Math.min(cmin, Math.sqrt(Mc(colMat[cc]) / MATS[colMat[cc]].rho)); }
+      E.g = (cmin / (3 * total * a)) * comp / (clampRows * a * DEPTH);
+      CL.ends.push(E);
+    }
+    // settle only the clamp and a buffer of plate next to it; the rest of the plate sleeps unstressed
+    var buf = tRows + Math.max(3, Math.round(Math.max(24, 0.25 * S.thick) / a));
+    for (var q = 0; q < plateRows.length; q += 3) {
+      var r = plateRows[q + 1];
+      if (r >= clampRows + buf && r < R - clampRows - buf) { alive[plateRows[q]] = 0; sleep[plateRows[q]] = 1; }
+    }
+    settling = true; settleT = 0;
+  }
+
+  function shapeCells(kind, D) {
+    var cells = [], ix, iy;
+    var hw = Math.max(1, Math.round(D / (2 * a)));
+    function n(x) { return Math.max(2, Math.round(x / a)); }
+    if (kind === 'rod') {
+      var L = n(6 * D), tip = hw;
+      for (ix = 0; ix < L; ix++) {
+        var half = hw;
+        if (ix >= L - tip) { var q = ix - (L - tip); half = Math.round(Math.sqrt(Math.max(0, hw * hw - q * q))); }
+        for (iy = -half; iy <= half; iy++) cells.push([ix, iy]);
+      }
+    } else if (kind === 'ball') {
+      for (ix = -hw; ix <= hw; ix++) for (iy = -hw; iy <= hw; iy++) if (ix * ix + iy * iy <= hw * hw + hw * 0.6) cells.push([ix + hw, iy]);
+    } else if (kind === 'slug') {
+      var L2 = n(1.6 * D);
+      for (ix = 0; ix < L2; ix++) for (iy = -hw; iy <= hw; iy++) cells.push([ix, iy]);
+    } else if (kind === 'flyer') {
+      var Lf = n(0.4 * D), hh = Math.max(2, Math.round(Math.min(6 * D, 400) / (2 * a)));
+      for (ix = 0; ix < Lf; ix++) for (iy = -hh; iy <= hh; iy++) cells.push([ix, iy]);
+    } else {
+      var L3 = n(2.4 * D);
+      for (ix = 0; ix < L3; ix++) {
+        var hf = Math.round(hw * (L3 - 1 - ix) / (L3 - 1));
+        for (iy = -hf; iy <= hf; iy++) cells.push([ix, iy]);
+      }
+    }
+    return cells;
+  }
+
+  function pickGauges(noseX, v) {
+    var minx = 1e9, maxx = -1e9, f = -1, r = -1, i, band = 0.75 * a;
+    for (i = 0; i < tgtN; i++) {
+      if (!alive[i] || nbl[i] === 0 || pin[i] || Math.abs(py[i] - aimY) > band) continue;
+      if (px[i] < minx) { minx = px[i]; f = i; }
+      if (px[i] > maxx) { maxx = px[i]; r = i; }
+    }
+    // gauges at 15 %, 50 % and 85 % of the way through, so none sits on a free surface
+    var fr = [0.15, 0.5, 0.85], pick = [-1, -1, -1], best = [1e9, 1e9, 1e9];
+    for (i = 0; i < tgtN; i++) {
+      if (!alive[i] || nbl[i] === 0 || pin[i] || Math.abs(py[i] - aimY) > band) continue;
+      for (var k = 0; k < 3; k++) {
+        var d = Math.abs(px[i] - (minx + fr[k] * (maxx - minx)));
+        if (d < best[k]) { best[k] = d; pick[k] = i; }
+      }
+    }
+    gIdx = f >= 0 ? pick : [-1, -1, -1]; gN = 0; gMin = 0; gMaxP = 0; gEpoch++; gSent = 0;
+    gT0 = f >= 0 ? simT + Math.max(0, (minx - a - noseX) / v) : simT;
+    gNext = gT0 - 1.5;
+    var tot = f >= 0 ? (maxx - minx) / MATS[S.tm].c0 : 20;
+    gDt = Math.max(0.02, Math.min(0.2, tot * 4 / 1500));
+  }
+
+
+  /* ---------- colour ---------- */
+  // approximate incandescence: dull red near 800 K, orange near 1300 K, white-yellow beyond 2000 K
+  var RAMP = [[0, 110, 20, 16], [.25, 200, 50, 18], [.5, 255, 120, 30], [.75, 255, 200, 100], [1, 255, 248, 232]];
+  var rc = [0, 0, 0];
+  function rampOf(R, f) {
+    if (f < 0) f = 0; if (f > 1) f = 1;
+    for (var k = 1; k < R.length; k++) {
+      if (f <= R[k][0]) {
+        var p = R[k - 1], q = R[k], u = (f - p[0]) / (q[0] - p[0]);
+        rc[0] = p[1] + (q[1] - p[1]) * u; rc[1] = p[2] + (q[2] - p[2]) * u; rc[2] = p[3] + (q[3] - p[3]) * u;
+        return;
+      }
+    }
+    var L = R[R.length - 1]; rc[0] = L[1]; rc[1] = L[2]; rc[2] = L[3];
+  }
+  function ramp(f) { rampOf(RAMP, f); }
+  // colours are packed 0xAABBGGRR, ready to write into a little-endian ImageData buffer
+  function rgb(r, g, b) { return (0xff000000 | ((b & 255) << 16) | ((g & 255) << 8) | (r & 255)) >>> 0; }
+  var DMG_FIX = rgb(70, 90, 116), DMG_OK = rgb(40, 58, 80);
+
+  // pressure palettes: log scale, compression up to 60 GPa (cool), tension down to -5 GPa (violet)
+  var PFLOOR = 0.03, PCMAX = 60, PTMAX = 5, NCL = 64, NTL = 32;
+  var CRAMP = [[0, 34, 62, 110], [.3, 40, 110, 190], [.6, 90, 185, 235], [.85, 190, 235, 255], [1, 255, 255, 255]];
+  var TRAMP = [[0, 70, 36, 96], [.4, 150, 70, 170], [.75, 205, 120, 225], [1, 245, 200, 255]];
+  var LCMAX = Math.log(1 + PCMAX / PFLOOR), LTMAX = Math.log(1 + PTMAX / PFLOOR);
+  var PBASE = [], PCOMP = [], PTEN = [];
+  MATS.forEach(function (m, idx) {
+    var b0 = [24 + m.c[0] * 0.16, 32 + m.c[1] * 0.16, 44 + m.c[2] * 0.16];
+    PBASE[idx] = rgb(b0[0], b0[1], b0[2]);
+    PCOMP[idx] = []; PTEN[idx] = [];
+    for (var k = 0; k < NCL; k++) {
+      var f = (k + 1) / NCL, t = Math.min(1, f * 4); rampOf(CRAMP, f);
+      PCOMP[idx].push(rgb(b0[0] + (rc[0] - b0[0]) * t, b0[1] + (rc[1] - b0[1]) * t, b0[2] + (rc[2] - b0[2]) * t));
+    }
+    for (k = 0; k < NTL; k++) {
+      var f2 = (k + 1) / NTL, t2 = Math.min(1, f2 * 4); rampOf(TRAMP, f2);
+      PTEN[idx].push(rgb(b0[0] + (rc[0] - b0[0]) * t2, b0[1] + (rc[1] - b0[1]) * t2, b0[2] + (rc[2] - b0[2]) * t2));
+    }
+  });
+  function presColor(m, p) {
+    if (p > PFLOOR) { var k = (Math.log(1 + p / PFLOOR) / LCMAX * NCL) | 0; return PCOMP[m][k >= NCL ? NCL - 1 : k]; }
+    if (p < -PFLOOR) { var k2 = (Math.log(1 - p / PFLOOR) / LTMAX * NTL) | 0; return PTEN[m][k2 >= NTL ? NTL - 1 : k2]; }
+    return PBASE[m];
+  }
+
+
+  /* ---------- shooting (simulation side) ---------- */
+  function fire() {
+    if (settling) { pendingFire = true; return; }
+    var cells = shapeCells(S.shape, S.dia), n = cells.length;
+    if (N + n > NP - 20 || NBn + n * 5 > NB - 20) { post({ t: 'toast', msg: 'Out of room. Reset to clear the debris.' }); return; }
+    var maxIx = 0; cells.forEach(function (c) { if (c[0] > maxIx) maxIx = c[0]; });
+    var v = S.speed;
+    var xf = Math.max(120, TX - plateHalf - 30);
+    var id = 10 + (shots % 50), start = N, mass = 0;
+    cells.forEach(function (c) {
+      var i = addParticle(xf - (maxIx - c[0]) * a, aimY + c[1] * a, S.pm, id, false);
+      vx[i] = v; mass += ms[i];
+    });
+    bondBody(start, N);
+    lastStart = start; lastEnd = N;
+    shots++; shotPeak = 0;
+    var ke = 0.5 * mass * v * v;      // mg · (km/s)² = joules
+    var g = mass / 1000;
+    lastShotTxt = (g >= 10 ? g.toFixed(0) : g.toFixed(1)) + ' g · ' + (ke >= 1000 ? (ke / 1000).toFixed(1) + ' kJ' : Math.round(ke) + ' J');
+    var IM = impedance(MATS[S.pm], MATS[S.tm], v);
+    imP = IM.p; imU = IM.u;
+    post({ t: 'shot', imTxt: MATS[S.pm].n + ' → ' + MATS[S.tm].n + ': ' + imP.toFixed(1) + ' GPa, interface ' + imU.toFixed(2) + ' km/s',
+      hint: 'Last shot: ' + lastShotTxt + ' per ' + DEPTH + ' mm of depth' });
+    pickGauges(xf, v);
+    if (dt > CFL * a / (MATS[S.pm].cL + v)) dt = CFL * a / (MATS[S.pm].cL + v);
+    if (paused) { paused = false; post({ t: 'paused', p: false }); }
+  }
+
+  /* ---------- snapshots for the page ---------- */
+  function dispP(i) { return nbl[i] > 0 ? pq[i] : pc[i]; }
+  // positions, packed RGBA colours and glow strength for every visible particle in the current view
+  function fillSnapshot(B) {
+    var xy = B.xy, col = B.col, gl = B.glow, n = 0, view = S.view, i, f, base, t, m, d, c, g;
+    for (i = 0; i < N; i++) {
+      if (!alive[i] && !sleep[i]) continue;
+      m = mat[i]; g = 0;
+      if (view === 'pres') {
+        c = presColor(m, dispP(i));
+      } else if (view === 'mat') {
+        f = (T[i] - 650) / 1550;
+        if (f <= 0) c = fix[i] ? FSTR[shade[i]] : MSTR[m][shade[i]];
+        else {
+          base = MATS[m].c; t = Math.min(1, f * 3.5); ramp(f);
+          c = rgb(base[0] + (rc[0] - base[0]) * t, base[1] + (rc[1] - base[1]) * t, base[2] + (rc[2] - base[2]) * t);
+          if (f > 0.15) g = f;
+        }
+      } else if (view === 'heat') {
+        f = (T[i] - 300) / 1900;
+        t = Math.min(1, f * 8); ramp(Math.min(1, f * 1.2));
+        c = rgb(30 + (rc[0] - 30) * t, 44 + (rc[1] - 44) * t, 62 + (rc[2] - 62) * t);
+        if (f > 0.25) g = Math.min(1, f);
+      } else {
+        d = nb0[i] > 0 ? 1 - nbl[i] / nb0[i] : 0;
+        if (dm[i] > d) d = dm[i];
+        if ((pin[i] || fix[i]) && d < 0.02) c = DMG_FIX;
+        else if (d < 0.02) c = DMG_OK;
+        else { ramp(Math.min(1, 0.15 + d * 0.85)); c = rgb(rc[0], rc[1], rc[2]); }
+      }
+      xy[2 * n] = px[i]; xy[2 * n + 1] = py[i]; col[n] = c;
+      gl[n] = g > 0 ? Math.max(1, Math.min(255, Math.round(g * 255))) : 0;
+      n++;
+    }
+    return n;
+  }
+  function boltInfo() {
+    if (!CL) return null;
+    return CL.ends.map(function (E) {
+      if (E.bf < 0 || E.br < 0 || !alive[E.bf] || !alive[E.br]) return null;
+      return [px[E.bf] - CL.nx * a * 1.5, py[E.bf] - CL.ny * a * 1.5, px[E.br] + CL.nx * a * 1.5, py[E.br] + CL.ny * a * 1.5, E.state];
+    });
+  }
+  function gaugeInfo() {
+    return gIdx.map(function (gi) { return gi >= 0 && alive[gi] ? [px[gi], py[gi]] : null; });
+  }
+  var gEpoch = 0, gSent = 0;
+  function scopeDelta() {
+    var d = { epoch: gEpoch, from: gSent, t: gT.slice(gSent, gN), v: gV.slice(gSent * 3, gN * 3),
+      maxP: gMaxP, min: gMin, imP: imP, has: gIdx[0] >= 0, shots: shots };
+    gSent = gN;
+    return d;
+  }
+  function hud() {
+    var cnt = 0, peak = 300, pmx = 0, i, p, h = {};
+    for (i = 0; i < N; i++) {
+      if (!alive[i]) continue; cnt++;
+      if (T[i] > peak) peak = T[i];
+      p = dispP(i); if (p > pmx) pmx = p;
+    }
+    if (pmx > shotPeak) shotPeak = pmx;
+    var li = bodyLive[1] + bodyLive[2], ii = bodyInit[1] + bodyInit[2];
+    var sm = 0, sv = 0;
+    for (i = lastStart; i < lastEnd; i++) { if (!alive[i]) continue; sm += ms[i]; sv += ms[i] * vx[i]; }
+    h.hS = settling ? 'bolting up' : simT.toFixed(1) + ' µs';
+    if (!CL) h.hC = S.mount === 'rigid' ? 'rigid' : '–';
+    else if (settling) h.hC = 'tightening bolts';
+    else {
+      var slip = 0, st = 0, fmax = 0, bearing = false;
+      CL.ends.forEach(function (E, k) {
+        var r = slipRaw(E) - E.slip0;
+        if (r === r) { r = k === 0 ? r : -r; if (Math.abs(r) > Math.abs(slip)) slip = r; }
+        if (E.state > st) st = E.state;
+        if (E.F > fmax) fmax = E.F;
+        if (E.bear > 0) bearing = true;
+      });
+      var as = Math.abs(slip);
+      h.hC = 'slip ' + as.toFixed(as < 9.95 ? 1 : 0) + ' mm' + (as >= 0.05 ? (slip > 0 ? ' in' : ' out') : '') + ' · bolts ' +
+        (st === 3 ? 'sheared' : st === 2 ? 'snapped' : st === 1 ? 'yielded' : bearing ? 'bearing' : fmax.toFixed(0) + ' kN');
+    }
+    h.hP = cnt.toLocaleString('en-US');
+    h.hI = ii ? Math.max(0, Math.round(100 * li / ii)) + '%' : '100%';
+    h.hT = Math.round(peak - 273) + ' °C';
+    h.hPr = pmx.toFixed(pmx < 10 ? 1 : 0) + ' GPa' + (shots ? ' (max ' + shotPeak.toFixed(shotPeak < 10 ? 1 : 0) + ')' : '');
+    h.hV = sm > 0 ? (sv / sm).toFixed(2) + ' km/s' : (lastEnd > lastStart ? 'gone' : 'none');
+    return h;
+  }
+
+  /* ---------- run loop and messaging ---------- */
+  // in a worker the simulation has the thread to itself; on the page it must leave room for drawing
+  var BUDGET = self.__local ? 9 : 14, lastWall = performance.now(), hudNext = 0, pool = [];
+  function newBufs() { return { xy: new Float32Array(NP * 2), col: new Uint32Array(NP), glow: new Uint8Array(NP) }; }
+  pool.push(newBufs(), newBufs(), newBufs());
+  function post(m, tr) { self.postMessage(m, tr || []); }
+  function copyS(o) { for (var k in o) S[k] = o[k]; }
+  function sendFrame() {
+    var B = pool.pop(), n = fillSnapshot(B), now = performance.now();
+    var msg = { t: 'frame', n: n, a: a, b: B, plateHalf: plateHalf, plen: plenEff, bolts: boltInfo(), gauges: gaugeInfo(), scope: scopeDelta() };
+    if (now >= hudNext) { msg.hud = hud(); hudNext = now + 120; }
+    post(msg, [B.xy.buffer, B.col.buffer, B.glow.buffer]);
+  }
+  function tick() {
+    var t0 = performance.now(), dtw = Math.min(0.05, (t0 - lastWall) / 1000);
+    lastWall = t0;
+    if (N > 0) {
+      if (settling) {
+        while (settling && performance.now() - t0 < BUDGET) settleStep();
+      } else if (!paused) {
+        var want = S.rate * dtw, adv = 0;
+        while (adv < want && performance.now() - t0 < BUDGET) adv += step();
+      }
+      if (pool.length) sendFrame();
+    }
+    var used = performance.now() - t0;
+    if (used >= BUDGET - 1) again(); else setTimeout(tick, Math.max(1, 8 - used));
+  }
+  // back-to-back batches go through a message channel, because chained zero-delay timers are throttled to 4 ms
+  var chan = typeof MessageChannel !== 'undefined' ? new MessageChannel() : null;
+  if (chan) chan.port1.onmessage = tick;
+  function again() { if (chan) chan.port2.postMessage(0); else setTimeout(tick, 0); }
+  self.onmessage = function (ev) {
+    var m = ev.data;
+    if (m.t === 'build') { copyS(m.S); buildTarget(); }
+    else if (m.t === 'fire') { copyS(m.S); aimY = m.aimY; fire(); }
+    else if (m.t === 'pause') paused = m.p;
+    else if (m.t === 'set') copyS(m.S);
+    else if (m.t === 'ret') pool.push(m.b);
+  };
+  // pressure legend colours, so the page can draw the key without its own copy of the palette
+  var legCol = [], legTicks = [];
+  for (var lk = 0; lk < 120; lk++) {
+    var lu = lk / 120, lp = lu < 0.25 ? -PFLOOR * (Math.exp((1 - lu / 0.25) * LTMAX) - 1) : PFLOOR * (Math.exp((lu - 0.25) / 0.75 * LCMAX) - 1);
+    legCol.push(presColor(0, lp));
+  }
+  [-5, -1, 0, 1, 10, 60].forEach(function (p) {
+    legTicks.push([p, p >= 0 ? 0.25 + 0.75 * Math.log(1 + p / PFLOOR) / LCMAX : 0.25 * (1 - Math.log(1 - p / PFLOOR) / LTMAX)]);
+  });
+  post({ t: 'ready', legend: { col: legCol, ticks: legTicks } });
+  setTimeout(tick, 0);
+}
+
+
+(function () {
+  'use strict';
+  var WW = 1200, WH = 746.67, TX = 780, DEPTH = 10, CLAMP = 32;
+  var MATS = makeMats();
+  var S = { shape: 'rod', pm: 0, speed: 1.5, dia: 32, ttype: 'plate', tm: 2, bm: 0, thick: 100, angle: 0, plen: 640, a: 4, view: 'pres', rate: 100, mount: 'bolted', preload: 20 };
+  var paused = false, aimY = WH / 2, plateHalf = 48;
+  function copyS() { var o = {}; for (var k in S) o[k] = S[k]; return o; }
+
+  /* ---------- simulation thread ---------- */
+  // The physics runs in a Web Worker built from simCore's own source. If the browser refuses the worker,
+  // the same code runs on the page instead, with the same messages.
+  function startSim(handler) {
+    var api = { mode: '', post: null }, queue = [], ok = false, w = null;
+    function flush() { var q = queue; queue = []; q.forEach(function (x) { api.post(x.m, x.tr); }); }
+    function useLocal() {
+      if (ok && api.mode === 'page') return;
+      if (w) { try { w.terminate(); } catch (e) { /* already gone */ } w = null; }
+      ok = true; api.mode = 'page';
+      var port = { __local: true, onmessage: null,
+        postMessage: function (m) { setTimeout(function () { handler({ data: m }); }, 0); } };
+      simCore(port);
+      api.post = function (m) { setTimeout(function () { port.onmessage({ data: m }); }, 0); };
+      flush();
+    }
+    api.post = function (m, tr) { queue.push({ m: m, tr: tr }); };
+    try {
+      var src = [makeMats, simCore].map(String).join('\n') + '\nsimCore(self);';
+      w = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+    } catch (e) { w = null; }
+    if (!w) { useLocal(); return api; }
+    w.onmessage = function (ev) {
+      if (!ok && ev.data.t === 'ready') {
+        ok = true; api.mode = 'worker';
+        api.post = function (m, tr) { w.postMessage(m, tr || []); };
+        flush();
+      }
+      if (api.mode === 'worker') handler(ev);
+    };
+    w.onerror = function () { if (!ok) useLocal(); };
+    setTimeout(function () { if (!ok) useLocal(); }, 2500);
+    return api;
+  }
+
+  var snap = null, legend = null, dirty = true, scopeDirty = true;
+  function retBufs(b) { api_post({ t: 'ret', b: b }, [b.xy.buffer, b.col.buffer, b.glow.buffer]); }
+  function api_post(m, tr) { sim.post(m, tr); }
+  function onSim(ev) {
+    var m = ev.data;
+    if (m.t === 'ready') { legend = m.legend; dirty = true; }
+    else if (m.t === 'frame') {
+      if (snap) retBufs(snap.b);
+      snap = m; dirty = true; plateHalf = m.plateHalf; plenEff = m.plen; plenTxt();
+      if (m.scope) addScope(m.scope);
+      if (m.hud) setHud(m.hud);
+    } else if (m.t === 'shot') {
+      imTxt.textContent = m.imTxt;
+      if (m.hint) $('hint').textContent = m.hint;
+    } else if (m.t === 'toast') showToast(m.msg);
+    else if (m.t === 'paused') setPausedUI(m.p);
+  }
+  var sim = startSim(onSim);
+
+  /* ---------- rendering ---------- */
+  var $ = function (id) { return document.getElementById(id); };
+  var cv = $('cv'), ctx = cv.getContext('2d');
+  var stage = $('stage');
+  var scope = $('scope'), sctx = scope.getContext('2d');
+  var imTxt = $('imTxt');
+  var cssW = 900, dpr = 1, scW = 600, scH = 150, img = null, pix = null, bgPix = null;
+  function resize() {
+    var r = stage.getBoundingClientRect();
+    cssW = Math.max(200, r.width); dpr = Math.min(2, window.devicePixelRatio || 1);
+    cv.width = Math.round(cssW * dpr); cv.height = Math.round(cssW * WH / WW * dpr);
+    // background and grid are painted once per size, then copied under every frame
+    var sc = cssW / WW * dpr;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = '#0d141c'; ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.setTransform(sc, 0, 0, sc, 0, 0);
+    ctx.strokeStyle = 'rgba(120,150,180,0.07)'; ctx.lineWidth = 1 / sc;
+    ctx.beginPath();
+    for (var gx = 100; gx < WW; gx += 100) { ctx.moveTo(gx, 0); ctx.lineTo(gx, WH); }
+    for (var gy = 100; gy < WH; gy += 100) { ctx.moveTo(0, gy); ctx.lineTo(WW, gy); }
+    ctx.stroke();
+    bgPix = new Uint32Array(ctx.getImageData(0, 0, cv.width, cv.height).data.buffer.slice(0));
+    img = ctx.createImageData(cv.width, cv.height); pix = new Uint32Array(img.data.buffer);
+    var r2 = scope.getBoundingClientRect();
+    scW = Math.max(200, r2.width); scH = Math.max(80, r2.height);
+    scope.width = Math.round(scW * dpr); scope.height = Math.round(scH * dpr);
+    dirty = true; scopeDirty = true;
+  }
+  if (window.ResizeObserver) { new ResizeObserver(resize).observe(stage); new ResizeObserver(resize).observe(scope); }
+  window.addEventListener('resize', resize);
+
+  function cssOf(c) { return 'rgb(' + (c & 255) + ',' + ((c >>> 8) & 255) + ',' + ((c >>> 16) & 255) + ')'; }
+
+  function draw() {
+    if (!pix) return;
+    var W = cv.width, H = cv.height, sc = cssW / WW * dpr;
+    pix.set(bgPix);
+    if (snap) {
+      // particles: solid squares written straight into the pixel buffer
+      var n = snap.n, xy = snap.b.xy, col = snap.b.col, gl = snap.b.glow, s = snap.a * 1.04 * sc, hs = s / 2, i, x0, x1, y0, y1, y;
+      for (i = 0; i < n; i++) {
+        var cx = xy[2 * i] * sc, cy = xy[2 * i + 1] * sc;
+        x0 = Math.round(cx - hs); x1 = Math.round(cx + hs); y0 = Math.round(cy - hs); y1 = Math.round(cy + hs);
+        if (x1 <= x0) x1 = x0 + 1; if (y1 <= y0) y1 = y0 + 1;
+        if (x0 < 0) x0 = 0; if (y0 < 0) y0 = 0; if (x1 > W) x1 = W; if (y1 > H) y1 = H;
+        if (x0 >= x1 || y0 >= y1) continue;
+        var c = col[i];
+        for (y = y0; y < y1; y++) pix.fill(c, y * W + x0, y * W + x1);
+      }
+      // incandescent glow: additive orange halo around hot particles
+      var gs = s * 1.2;
+      for (i = 0; i < n; i++) {
+        var g = gl[i]; if (!g) continue;
+        var al = 0.05 + 0.09 * (g / 255), ar = 255 * al, ag = 110 * al, ab = 40 * al;
+        var gx0 = Math.round(xy[2 * i] * sc - gs), gx1 = Math.round(xy[2 * i] * sc + gs);
+        var gy0 = Math.round(xy[2 * i + 1] * sc - gs), gy1 = Math.round(xy[2 * i + 1] * sc + gs);
+        if (gx0 < 0) gx0 = 0; if (gy0 < 0) gy0 = 0; if (gx1 > W) gx1 = W; if (gy1 > H) gy1 = H;
+        for (y = gy0; y < gy1; y++) {
+          for (var k = y * W + gx0, ke = y * W + gx1; k < ke; k++) {
+            var p = pix[k], r = (p & 255) + ar, gg = ((p >>> 8) & 255) + ag, b = ((p >>> 16) & 255) + ab;
+            pix[k] = 0xff000000 | ((b > 255 ? 255 : b) << 16) | ((gg > 255 ? 255 : gg) << 8) | (r > 255 ? 255 : r);
+          }
+        }
+      }
+    }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.putImageData(img, 0, 0);
+    ctx.setTransform(sc, 0, 0, sc, 0, 0);
+    // aim guide and launcher
+    ctx.strokeStyle = 'rgba(111,179,224,0.35)'; ctx.lineWidth = 1 / sc; ctx.setLineDash([8, 8]);
+    ctx.beginPath(); ctx.moveTo(48, aimY); ctx.lineTo(TX - plateHalf - 16, aimY); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = '#3a4c60'; ctx.fillRect(8, aimY - 20, 32, 40);
+    ctx.fillStyle = '#6fb3e0'; ctx.fillRect(36, aimY - 4, 12, 8);
+    // scale bar: 200 mm
+    ctx.strokeStyle = 'rgba(219,227,236,0.55)'; ctx.lineWidth = 2 / sc;
+    ctx.beginPath(); ctx.moveTo(WW - 240, WH - 32); ctx.lineTo(WW - 40, WH - 32);
+    ctx.moveTo(WW - 240, WH - 40); ctx.lineTo(WW - 240, WH - 24); ctx.moveTo(WW - 40, WH - 40); ctx.lineTo(WW - 40, WH - 24); ctx.stroke();
+    ctx.fillStyle = 'rgba(219,227,236,0.7)'; ctx.textAlign = 'center';
+    ctx.font = (11 / sc * dpr) + 'px "IBM Plex Mono", monospace';
+    ctx.fillText('200 mm', WW - 140, WH - 48);
+    if (snap) {
+      var a = snap.a;
+      // clamp bolts
+      if (snap.bolts) {
+        ctx.lineCap = 'round';
+        snap.bolts.forEach(function (B) {
+          if (!B) return;
+          ctx.lineWidth = Math.max(2.5, a * 0.7);
+          if (B[4] >= 2) { ctx.strokeStyle = 'rgba(129,150,171,0.6)'; ctx.setLineDash([a, a]); }
+          else ctx.strokeStyle = B[4] === 1 ? '#c08ae6' : '#6fb3e0';
+          ctx.beginPath(); ctx.moveTo(B[0], B[1]); ctx.lineTo(B[2], B[3]); ctx.stroke(); ctx.setLineDash([]);
+          if (B[4] < 2) {
+            ctx.fillStyle = ctx.strokeStyle;
+            var hw = a * 1.4;
+            ctx.fillRect(B[0] - hw / 2, B[1] - hw / 2, hw, hw); ctx.fillRect(B[2] - hw / 2, B[3] - hw / 2, hw, hw);
+          }
+        });
+        ctx.lineCap = 'butt';
+      }
+      // gauge markers
+      snap.gauges.forEach(function (G, gk) {
+        if (!G) return;
+        ctx.strokeStyle = GCOL[gk]; ctx.lineWidth = 1.5 / sc * dpr;
+        ctx.strokeRect(G[0] - a * 1.2, G[1] - a * 1.2, a * 2.4, a * 2.4);
+      });
+    }
+    if (S.view === 'pres' && cssW >= 560 && legend) drawLegend();
+  }
+  function drawLegend() {
+    var x0 = WW - 600, x1 = WW - 300, y = WH - 40, hgt = 8;
+    for (var k = 0; k < 120; k++) {
+      ctx.fillStyle = cssOf(legend.col[k]);
+      ctx.fillRect(x0 + k / 120 * (x1 - x0), y, (x1 - x0) / 120 + 0.5, hgt);
+    }
+    ctx.fillStyle = 'rgba(219,227,236,0.7)'; ctx.textAlign = 'center';
+    legend.ticks.forEach(function (tk) { ctx.fillText(String(tk[0]), x0 + tk[1] * (x1 - x0), y - 6); });
+    ctx.textAlign = 'left';
+    ctx.fillText('GPa', x1 + 8, y + hgt);
+  }
+
+  /* ---------- stress gauges ---------- */
+  var GCOL = ['#dbe3ec', '#6fb3e0', '#c08ae6'];
+  var GMAX = 8000, gT = new Float32Array(GMAX), gV = new Float32Array(GMAX * 3), gN = 0, gEpoch = -1;
+  var gMaxP = 0, gMin = 0, imP = 0, gHas = false, shots = 0;
+  function addScope(d) {
+    if (d.epoch !== gEpoch) { gEpoch = d.epoch; gN = 0; }
+    if (d.from !== gN) gN = Math.min(gN, d.from);
+    var k = d.t.length;
+    if (k) {
+      if (gN + k > GMAX) k = GMAX - gN;
+      gT.set(d.t.subarray(0, k), gN); gV.set(d.v.subarray(0, 3 * k), 3 * gN); gN += k;
+    }
+    gMaxP = d.maxP; gMin = d.min; imP = d.imP; gHas = d.has; shots = d.shots;
+    scopeDirty = true;
+  }
+  function niceStep(span, n) {
+    var raw = span / n, p = Math.pow(10, Math.floor(Math.log10(raw))), r = raw / p;
+    return (r < 1.5 ? 1 : r < 3.5 ? 2 : r < 7.5 ? 5 : 10) * p;
+  }
+  function drawScope() {
+    var w = scope.width, hgt = scope.height, d = dpr;
+    sctx.setTransform(1, 0, 0, 1, 0, 0);
+    sctx.clearRect(0, 0, w, hgt);
+    sctx.setTransform(d, 0, 0, d, 0, 0);
+    var W = scW, H = scH, L = 44, R = 10, Tp = 6, B = 20;
+    sctx.font = '10px "IBM Plex Mono", monospace';
+    if (!gHas || gN < 2) {
+      sctx.fillStyle = '#8196ab'; sctx.textAlign = 'center';
+      sctx.fillText(!gHas && shots ? 'Shot missed the target' : 'Fire to record stress inside the target along the shot line', W / 2, H / 2);
+      return;
+    }
+    var tEnd = gT[gN - 1], tmax = Math.max(5, tEnd * 1.05);
+    var pmax = Math.max(0.5, gMaxP * 1.1, imP * 1.15), pmin = Math.max(Math.min(0, gMin * 1.1), -0.6 * pmax);
+    if (imP > 0) pmax = Math.min(pmax, imP * 2.2);   // keep a single spike from flattening the traces
+    var X = function (t) { return L + (W - L - R) * t / tmax; };
+    var Y = function (p) { return Tp + (H - Tp - B) * (1 - (p - pmin) / (pmax - pmin)); };
+    sctx.strokeStyle = 'rgba(129,150,171,0.15)'; sctx.lineWidth = 1; sctx.fillStyle = '#8196ab';
+    var ps = niceStep(pmax - pmin, 4), k;
+    sctx.textAlign = 'right';
+    sctx.beginPath();
+    for (k = Math.ceil(pmin / ps) * ps; k <= pmax; k += ps) { sctx.moveTo(L, Y(k) + 0.5); sctx.lineTo(W - R, Y(k) + 0.5); sctx.fillText((Math.abs(k) < 1e-9 ? 0 : +k.toPrecision(3)) + '', L - 6, Y(k) + 3); }
+    var ts = niceStep(tmax, 6);
+    sctx.textAlign = 'center';
+    for (k = 0; k <= tmax; k += ts) { sctx.moveTo(X(k) + 0.5, Tp); sctx.lineTo(X(k) + 0.5, H - B); sctx.fillText(+k.toPrecision(3) + '', X(k), H - 6); }
+    sctx.stroke();
+    sctx.textAlign = 'left'; sctx.fillText('GPa', 2, Tp + 8);
+    sctx.textAlign = 'right'; sctx.fillText('µs', W - R, H - 6);
+    sctx.strokeStyle = 'rgba(219,227,236,0.35)'; sctx.beginPath(); sctx.moveTo(L, Y(0) + 0.5); sctx.lineTo(W - R, Y(0) + 0.5); sctx.stroke();
+    if (imP > 0) {
+      sctx.strokeStyle = '#8196ab'; sctx.setLineDash([4, 3]); sctx.beginPath();
+      sctx.moveTo(L, Y(imP)); sctx.lineTo(W - R, Y(imP)); sctx.stroke(); sctx.setLineDash([]);
+    }
+    var stride = Math.max(1, Math.floor(gN / (W * 1.5)));
+    for (var g = 2; g >= 0; g--) {
+      sctx.strokeStyle = GCOL[g]; sctx.lineWidth = 1.4; sctx.beginPath();
+      var pen = false;
+      for (var s = 0; s < gN; s += stride) {
+        var v = gV[s * 3 + g];
+        if (v !== v) { pen = false; continue; }
+        if (v > pmax) v = pmax; else if (v < pmin) v = pmin;
+        if (!pen) { sctx.moveTo(X(gT[s]), Y(v)); pen = true; } else sctx.lineTo(X(gT[s]), Y(v));
+      }
+      sctx.stroke();
+    }
+  }
+
+  /* ---------- readouts ---------- */
+  var HUD = ['hS', 'hP', 'hI', 'hT', 'hV', 'hPr', 'hC'];
+  function setHud(h) { HUD.forEach(function (id) { if (h[id] !== undefined) $(id).textContent = h[id]; }); }
+
+  /* ---------- main loop: draw whatever the simulation last sent ---------- */
+  var frameNo = 0;
+  function frame() {
+    requestAnimationFrame(frame);
+    if (dirty) { draw(); dirty = false; }
+    if (scopeDirty && (frameNo & 1) === 0) { drawScope(); scopeDirty = false; }
+    frameNo++;
+  }
+
+  /* ---------- UI ---------- */
+  var toastEl = $('toast'), toastT = 0;
+  function showToast(msg) {
+    toastEl.textContent = msg; toastEl.hidden = false;
+    clearTimeout(toastT); toastT = setTimeout(function () { toastEl.hidden = true; }, 2600);
+  }
+  function seg(el, opts, get, set) {
+    function paint() {
+      el.querySelectorAll('button').forEach(function (b) { b.setAttribute('aria-pressed', String(String(get()) === b.dataset.v)); });
+    }
+    opts.forEach(function (o) {
+      var b = document.createElement('button'); b.type = 'button'; b.dataset.v = String(o.v); b.textContent = o.t;
+      b.addEventListener('click', function () { set(o.v); paint(); });
+      el.appendChild(b);
+    });
+    paint();
+    return paint;
+  }
+  function chips(el, get, set) {
+    function paint() {
+      el.querySelectorAll('button').forEach(function (b) { b.setAttribute('aria-pressed', String(+b.dataset.v === get())); });
+    }
+    ORDER.forEach(function (idx) {
+      var m = MATS[idx];
+      var b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.dataset.v = idx;
+      b.innerHTML = '<i style="background:rgb(' + m.c.join(',') + ')"></i>' + m.n;
+      b.addEventListener('click', function () { set(idx); paint(); });
+      el.appendChild(b);
+    });
+    paint();
+    return paint;
+  }
+  var repaint = [];
+  // picker order: metals first (heaviest to lightest), then the brittle and soft materials
+  var ORDER = [0, 1, 11, 10, 2, 3, 4, 5, 6, 7, 8, 9];
+  function matLine(m) {
+    var M = MATS[m], s = M.rho.toFixed(2) + ' g/cm³ · Us = ' + M.c0 + ' + ' + M.s + ' up · ';
+    s += M.brit ? 'tensile ' + (M.ts * 1000).toFixed(0) + ' MPa' : 'yield ' + (M.A * 1000).toFixed(0) + ' MPa · spall ' + M.spall + ' GPa';
+    return s + ' · melts ' + M.melt + ' K';
+  }
+  function crushCheck() {
+    var pC = S.preload / (CLAMP * DEPTH), worst = null, ws = 1e9;
+    var ms_ = [S.tm]; if (S.ttype === 'composite' || S.ttype === 'sandwich') ms_.push(S.bm);
+    ms_.forEach(function (m) { var M = MATS[m], st = M.brit ? M.Y0 : M.A; if (st < ws) { ws = st; worst = M; } });
+    var w = $('preWarn');
+    if (S.mount === 'bolted' && pC > 0.6 * ws) {
+      w.hidden = false;
+      w.textContent = Math.round(pC * 1000) + ' MPa is more than ' + worst.n.toLowerCase() + ' can take under the jaws (about ' +
+        Math.round(ws * 1000) + ' MPa), so it will yield or crush there while the bolts are tightened. Try ' +
+        Math.max(1, Math.floor(0.5 * ws * CLAMP * DEPTH)) + ' kN or less.';
+    } else w.hidden = true;
+  }
+  var plenEff = 0;
+  function plenTxt() {
+    var o = $('plenOut'); if (!o) return;
+    var t = S.plen + ' mm';
+    if (plenEff && Math.abs(plenEff - S.plen) > 8) t = Math.round(plenEff) + ' mm (fits picture)';
+    if (o.textContent !== t) o.textContent = t;
+  }
+  function preTxt() { return S.preload + ' kN · ' + Math.round(S.preload / (CLAMP * DEPTH) * 1000) + ' MPa'; }
+  function targetChanged() { sim.post({ t: 'build', S: copyS() }); syncUI(); }
+  function syncUI() {
+    repaint.forEach(function (f) { f(); });
+    $('speed').value = S.speed; $('speedOut').textContent = S.speed.toFixed(1) + ' km/s';
+    $('dia').value = S.dia; $('diaOut').textContent = S.dia + ' mm';
+    $('thick').value = S.thick; $('thickOut').textContent = S.thick + ' mm';
+    $('angle').value = S.angle; $('angleOut').textContent = S.angle + '°';
+    $('plen').value = S.plen; plenTxt();
+    $('preload').value = S.preload; $('preOut').textContent = preTxt();
+    $('preWrap').hidden = S.mount !== 'bolted';
+    crushCheck();
+    $('projInfo').textContent = matLine(S.pm);
+    $('tgtInfo').textContent = matLine(S.tm);
+    var two = S.ttype === 'composite' || S.ttype === 'sandwich';
+    $('bmWrap').hidden = !two;
+    $('tmLabel').textContent = S.ttype === 'composite' ? 'Face material' : S.ttype === 'sandwich' ? 'Outer material' : 'Plate material';
+  }
+  repaint.push(seg($('shapeSeg'), [{ v: 'rod', t: 'Rod' }, { v: 'ball', t: 'Ball' }, { v: 'slug', t: 'Slug' }, { v: 'cone', t: 'Cone' }, { v: 'flyer', t: 'Flyer' }],
+    function () { return S.shape; }, function (v) { S.shape = v; }));
+  repaint.push(chips($('pmChips'), function () { return S.pm; }, function (v) { S.pm = v; $('projInfo').textContent = matLine(v); }));
+  repaint.push(seg($('ttypeSeg'), [{ v: 'plate', t: 'Plate' }, { v: 'composite', t: 'Layered' }, { v: 'sandwich', t: 'Core' }, { v: 'spaced', t: 'Spaced' }],
+    function () { return S.ttype; }, function (v) { S.ttype = v; targetChanged(); }));
+  repaint.push(chips($('tmChips'), function () { return S.tm; }, function (v) { S.tm = v; targetChanged(); }));
+  repaint.push(chips($('bmChips'), function () { return S.bm; }, function (v) { S.bm = v; targetChanged(); }));
+  repaint.push(seg($('mountSeg'), [{ v: 'bolted', t: 'Bolted jaws' }, { v: 'rigid', t: 'Rigid' }],
+    function () { return S.mount; }, function (v) { S.mount = v; targetChanged(); }));
+  repaint.push(seg($('resSeg'), [{ v: 6, t: '6 mm' }, { v: 4, t: '4 mm' }, { v: 3, t: '3 mm' }, { v: 2, t: '2 mm' }],
+    function () { return S.a; }, function (v) { S.a = +v; targetChanged(); }));
+  repaint.push(seg($('viewSeg'), [{ v: 'pres', t: 'Pressure' }, { v: 'mat', t: 'Material' }, { v: 'heat', t: 'Heat' }, { v: 'dmg', t: 'Damage' }],
+    function () { return S.view; }, function (v) { S.view = v; sim.post({ t: 'set', S: copyS() }); dirty = true; }));
+  repaint.push(seg($('timeSeg'), [{ v: 10, t: '10' }, { v: 25, t: '25' }, { v: 100, t: '100' }, { v: 300, t: '300' }, { v: 1000, t: '1000' }],
+    function () { return S.rate; }, function (v) { S.rate = +v; sim.post({ t: 'set', S: copyS() }); }));
+
+  $('speed').addEventListener('input', function (e) { S.speed = +e.target.value; $('speedOut').textContent = S.speed.toFixed(1) + ' km/s'; });
+  $('dia').addEventListener('input', function (e) { S.dia = +e.target.value; $('diaOut').textContent = S.dia + ' mm'; });
+  $('thick').addEventListener('input', function (e) { S.thick = +e.target.value; $('thickOut').textContent = S.thick + ' mm'; });
+  $('thick').addEventListener('change', targetChanged);
+  $('angle').addEventListener('input', function (e) { S.angle = +e.target.value; $('angleOut').textContent = S.angle + '°'; });
+  $('angle').addEventListener('change', targetChanged);
+  $('plen').addEventListener('input', function (e) { S.plen = +e.target.value; $('plenOut').textContent = S.plen + ' mm'; });
+  $('plen').addEventListener('change', targetChanged);
+  $('preload').addEventListener('input', function (e) { S.preload = +e.target.value; $('preOut').textContent = preTxt(); crushCheck(); });
+  $('preload').addEventListener('change', targetChanged);
+
+  function setPausedUI(p) { paused = p; $('pause').textContent = p ? 'Resume' : 'Pause'; }
+  function setPaused(p) { setPausedUI(p); sim.post({ t: 'pause', p: p }); }
+  function fire() { sim.post({ t: 'fire', S: copyS(), aimY: aimY }); }
+  $('fire').addEventListener('click', fire);
+  $('pause').addEventListener('click', function () { setPaused(!paused); });
+  $('reset').addEventListener('click', function () { setPaused(false); targetChanged(); });
+
+  function worldY(e) {
+    var r = cv.getBoundingClientRect();
+    return (e.clientY - r.top) / (r.width / WW);
+  }
+  function clampAim(y) { return Math.max(WH / 2 - 250, Math.min(WH / 2 + 250, y)); }
+  cv.addEventListener('pointermove', function (e) { if (e.pointerType === 'mouse') { aimY = clampAim(worldY(e)); dirty = true; } });
+  cv.addEventListener('click', function (e) { aimY = clampAim(worldY(e)); dirty = true; fire(); });
+
+  var EXPS = [
+    { t: 'Rod vs aluminium', d: 'Steel 32 mm rod, 1.5 km/s, 100 mm plate', s: { shape: 'rod', pm: 0, dia: 32, speed: 1.5, ttype: 'plate', tm: 2, thick: 100, angle: 0, rate: 100 } },
+    { t: 'Spall test', d: 'Copper flyer on 48 mm copper, 0.4 km/s', s: { shape: 'flyer', pm: 3, dia: 40, speed: 0.4, ttype: 'plate', tm: 3, thick: 48, angle: 0, rate: 25 } },
+    { t: 'Hypervelocity rod', d: 'Tungsten 24 mm rod, 3.5 km/s, 120 mm steel', s: { shape: 'rod', pm: 1, dia: 24, speed: 3.5, ttype: 'plate', tm: 0, thick: 120, angle: 0, rate: 100 } },
+    { t: 'Glass pane', d: 'Steel 48 mm ball, 0.4 km/s, 40 mm', s: { shape: 'ball', pm: 0, dia: 48, speed: 0.4, ttype: 'plate', tm: 5, thick: 40, angle: 0, rate: 100 } },
+    { t: 'Ceramic-faced plate', d: 'Tungsten 32 mm rod, 1.6 km/s', s: { shape: 'rod', pm: 1, dia: 32, speed: 1.6, ttype: 'composite', tm: 6, bm: 0, thick: 140, angle: 0, rate: 100 } },
+    { t: 'Lead slug', d: 'Lead 48 mm slug on 60 mm steel', s: { shape: 'slug', pm: 4, dia: 48, speed: 0.5, ttype: 'plate', tm: 0, thick: 60, angle: 0, rate: 100 } },
+    { t: 'Spaced plates', d: 'Steel cone, two 32 mm aluminium plates', s: { shape: 'cone', pm: 0, dia: 56, speed: 1.2, ttype: 'spaced', tm: 2, thick: 64, angle: 0, rate: 100 } },
+    { t: 'Glancing hit', d: 'Steel rod, plate tilted 60°', s: { shape: 'rod', pm: 0, dia: 32, speed: 1.6, ttype: 'plate', tm: 0, thick: 80, angle: 60, rate: 100 } },
+    { t: 'Grazing hit', d: 'Steel 24 mm rod, 80 mm plate tilted 80°, 1 m long', s: { shape: 'rod', pm: 0, dia: 24, speed: 1.6, ttype: 'plate', tm: 0, thick: 80, angle: 80, plen: 1000, rate: 100 } },
+    { t: 'DU rod vs titanium', d: 'Depleted uranium 24 mm rod, 1.7 km/s, 100 mm Ti-6Al-4V', s: { shape: 'rod', pm: 11, dia: 24, speed: 1.7, ttype: 'plate', tm: 10, thick: 100, angle: 0, rate: 100 } },
+    { t: 'Concrete wall', d: 'Steel 56 mm slug, 0.8 km/s, 200 mm', s: { shape: 'slug', pm: 0, dia: 56, speed: 0.8, ttype: 'plate', tm: 8, thick: 200, angle: 0, rate: 100, preload: 6 } }
+  ];
+  EXPS.forEach(function (x) {
+    var b = document.createElement('button'); b.type = 'button'; b.className = 'exp';
+    b.innerHTML = '<b>' + x.t + '</b><span>' + x.d + '</span>';
+    b.addEventListener('click', function () {
+      S.preload = 20; S.plen = 640;
+      Object.keys(x.s).forEach(function (k) { S[k] = x.s[k]; });
+      aimY = WH / 2; dirty = true; setPaused(false); targetChanged();
+      setTimeout(fire, 350);
+    });
+    $('exps').appendChild(b);
+  });
+
+
+  /* ---------- start ---------- */
+  resize();
+  targetChanged();
+  requestAnimationFrame(frame);
+  if (!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches)) setTimeout(fire, 700);
+})();
+</script>
+</body>
+</html>
